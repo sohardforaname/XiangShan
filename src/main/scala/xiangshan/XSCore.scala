@@ -9,12 +9,13 @@ import xiangshan.backend.dispatch.DispatchParameters
 import xiangshan.backend.exu.ExuParameters
 import xiangshan.frontend._
 import xiangshan.mem._
-import xiangshan.cache.{ICache, DCache, L1plusCache, DCacheParameters, ICacheParameters, L1plusCacheParameters, PTW, Uncache}
+import xiangshan.cache.{ICache, DCache, L1plusCache, DCacheParameters, ICacheParameters, L1plusCacheParameters, L1plusPrefetcherParameters, PTW, Uncache, L1IplusPrefetcher, L1plusCacheReq}
 import chipsalliance.rocketchip.config
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import freechips.rocketchip.tilelink.{TLBundleParameters, TLCacheCork, TLBuffer, TLClientNode, TLIdentityNode, TLXbar}
 import sifive.blocks.inclusivecache.{CacheParameters, InclusiveCache, InclusiveCacheMicroParameters}
 import utils._
+import scala.math.max
 
 case class XSCoreParameters
 (
@@ -30,6 +31,7 @@ case class XSCoreParameters
   PAddrBits: Int = 40,
   HasFPU: Boolean = false,
   FectchWidth: Int = 8,
+  EnableIPrefetcher: Boolean = true,
   EnableBPU: Boolean = true,
   EnableBPD: Boolean = true,
   EnableRAS: Boolean = true,
@@ -113,6 +115,7 @@ trait HasXSParameter {
   val HasFPU = core.HasFPU
   val FetchWidth = core.FectchWidth
   val PredictWidth = FetchWidth * 2
+  val EnableIPrefetcher = core.EnableIPrefetcher
   val EnableBPU = core.EnableBPU
   val EnableBPD = core.EnableBPD // enable backing predictor(like Tage) in BPUStage3
   val EnableRAS = core.EnableRAS
@@ -168,13 +171,21 @@ trait HasXSParameter {
   val l1BusDataWidth = 256
 
   val icacheParameters = ICacheParameters(
-    nMissEntries = 2
+    nMissEntries = 2,
+    id = 0
   )
 
   val l1plusCacheParameters = L1plusCacheParameters(
     tagECC = Some("secded"),
     dataECC = Some("secded"),
-    nMissEntries = 8
+    nMissEntries = 8,
+    nClients = 1 + (if (EnableIPrefetcher) 1 else 0)
+  )
+
+  val l1plusPrefetcherParameters = L1plusPrefetcherParameters(
+    streamCnt = 4,
+    streamSize = 4,
+    id = 1
   )
 
   val dcacheParameters = DCacheParameters(
@@ -280,6 +291,7 @@ class XSCoreImp(outer: XSCore) extends LazyModuleImp(outer) with HasXSParameter 
   val l1pluscache = outer.l1pluscache.module
   val ptw = outer.ptw.module
   val icache = Module(new ICache)
+  val l1plusprefetcher = Module(new L1IplusPrefetcher(enable = EnableIPrefetcher))
 
   // TODO: connect this
 
@@ -289,8 +301,20 @@ class XSCoreImp(outer: XSCore) extends LazyModuleImp(outer) with HasXSParameter 
   icache.io.req <> front.io.icacheReq
   icache.io.flush <> front.io.icacheFlush
 
-  icache.io.mem_acquire <> l1pluscache.io.req
-  l1pluscache.io.resp <> icache.io.mem_grant
+  l1plusprefetcher.io.in <> icache.io.prefetch
+  val l1plusReqArb = Module(new Arbiter(new L1plusCacheReq, 2))
+  l1plusReqArb.io.in(0) <> icache.io.mem_acquire
+  l1plusReqArb.io.in(1) <> l1plusprefetcher.io.prefetch.req
+  l1pluscache.io.req <> l1plusReqArb.io.out
+  
+  icache.io.mem_grant.valid := l1pluscache.io.resp.valid && l1pluscache.io.resp.bits.clientId === icacheParameters.id.U
+  icache.io.mem_grant.bits := l1pluscache.io.resp.bits
+  l1plusprefetcher.io.prefetch.resp.valid := l1pluscache.io.resp.valid && l1pluscache.io.resp.bits.clientId === l1plusPrefetcherParameters.id.U
+  l1plusprefetcher.io.prefetch.resp.bits := l1pluscache.io.resp.bits
+  l1pluscache.io.resp.ready := Mux(l1pluscache.io.resp.bits.clientId === icacheParameters.id.U,
+    icache.io.mem_grant.ready,
+    l1plusprefetcher.io.prefetch.resp.ready)
+
   l1pluscache.io.flush := icache.io.l1plusflush
 
   mem.io.backend   <> backend.io.mem

@@ -8,6 +8,7 @@ import xiangshan.frontend._
 import utils._
 import chisel3.ExcitingUtils._
 import chisel3.util.experimental.BoringUtils
+import scala.math.max
 
 case class ICacheParameters(
     nSets: Int = 64,
@@ -20,7 +21,8 @@ case class ICacheParameters(
     nRPQ: Int = 16,
     nMissEntries: Int = 1,
     nMMIOs: Int = 1,
-    blockBytes: Int = 64
+    blockBytes: Int = 64,
+    id: Int = 0
 )extends L1CacheParameters {
 
   def tagCode: Code = Code.fromString(tagECC)
@@ -32,7 +34,15 @@ trait HasICacheParameters extends HasL1CacheParameters {
   val cacheParams = icacheParameters
 
   // the width of inner CPU data interface
-  def cacheID = 0
+  def cacheID = cacheParams.id
+  def icachemisQueueEntryIdWidth = log2Up(cacheParams.nMissEntries)
+  def prefetcherEntryIdWidth = log2Up(l1plusPrefetcherParameters.streamCnt)
+  def clientIdWidth = log2Up(l1plusCacheParameters.nClients) // l1i miss queue and l1+ prefetcher
+  def entryIdWidth = max(icachemisQueueEntryIdWidth, prefetcherEntryIdWidth)
+  def idWidth = clientIdWidth + entryIdWidth
+  def entryIdMSB = entryIdWidth - 1
+  def entryIdLSB = 0
+  
   // RVC instruction length
   def RVCInsLen = 16
 
@@ -91,6 +101,10 @@ class ICacheIO extends ICacheBundle
   val tlb = new BlockTlbRequestIO
   val flush = Input(UInt(2.W))
   val l1plusflush = Output(Bool())
+  val prefetch = DecoupledIO(new Bundle { // use icache req to train l1+ prefetcher
+    val req = new IcacheMissReq
+    val miss = Bool()
+  })
 }
 
 /* ------------------------------------------------------------
@@ -319,6 +333,13 @@ class ICache extends ICacheModule
   }
   XSDebug("[Stage 3] outPacket :%x\n",outPacket)
   XSDebug("[Stage 3] refillDataOut :%x\n",refillDataOut)
+
+  //----------------------------
+  //    Prefetch req for l1+
+  //----------------------------
+  io.prefetch.valid := icacheMissQueue.io.req.fire() || s3_valid && s3_hit && io.resp.fire() // use both hit and miss reqs
+  io.prefetch.bits.req := icacheMissQueue.io.req.bits
+  io.prefetch.bits.miss := icacheMissQueue.io.req.fire()
 
   //----------------------------
   //    Out Put

@@ -5,25 +5,48 @@ import chisel3.util._
 import freechips.rocketchip.tilelink.ClientMetadata
 import xiangshan._
 import utils._
+import scala.math.max
 
-trait HasPrefetcherParameters extends HasL1plusCacheParameters {
-  def clientIdWidth = icachemisQueueClientIdWidth
-  def entryIdWidth = icachemisQueueEntryIdWidth
-  def idWidth = clientIdWidth + entryIdWidth
-  def clientIdMSB = idWidth - 1
-  def clientIdLSB = entryIdWidth
-  def entryIdMSB = entryIdWidth - 1
-  def entryIdLSB = 0
-  // val streamCnt = 4
-  val streamSize = 4
-  val ageWidth = 4
+trait StreamPrefetcherParameters {
+  def streamCnt: Int
+  def streamSize: Int
+  def ageWidth: Int
 }
 
-abstract class PrefetcherModule extends L1CacheModule
+case class L1plusPrefetcherParameters (
+  streamCnt: Int = 4,
+  streamSize: Int = 4,
+  ageWidth: Int = 4,
+  id: Int = 1
+) extends StreamPrefetcherParameters
+
+
+trait HasPrefetcherParameters extends HasXSParameter with MemoryOpConstants {
+  val pcfg = l1plusPrefetcherParameters
+
+  val blockOffBits = log2Up(icacheParameters.blockBytes)
+  def get_block_addr(addr: UInt) = (addr >> blockOffBits) << blockOffBits
+
+  def streamCnt = pcfg.streamCnt
+  def streamSize = pcfg.streamSize
+  def ageWidth = pcfg.ageWidth
+  
+  def icachemisQueueEntryIdWidth = log2Up(icacheParameters.nMissEntries)
+  def prefetcherEntryIdWidth = log2Up(pcfg.streamCnt)
+  def clientIdWidth = log2Up(l1plusCacheParameters.nClients) // l1i miss queue and l1+ prefetcher
+  def entryIdWidth = max(icachemisQueueEntryIdWidth, prefetcherEntryIdWidth)
+  def idWidth = clientIdWidth + entryIdWidth
+  def entryIdMSB = entryIdWidth - 1
+  def entryIdLSB = 0
+
+  def prefetcherID = pcfg.id
+}
+
+abstract class PrefetcherModule extends XSModule
   // with HasDCacheParameters
   with HasPrefetcherParameters
 
-abstract class PrefetcherBundle extends L1CacheBundle
+abstract class PrefetcherBundle extends XSBundle
   // with HasDCacheParameters
   with HasPrefetcherParameters
   
@@ -95,8 +118,7 @@ class NextLinePrefetcher extends PrefetcherModule {
   io.prefetch.resp.ready := state === s_resp
 
   io.prefetch.finish.valid := state === s_finish
-  io.prefetch.finish.bits.client_id := resp.client_id
-  io.prefetch.finish.bits.entry_id := resp.entry_id
+  io.prefetch.finish.bits.id := resp.id
 
   when (state === s_idle) {
     when (io.in.valid) {
@@ -225,20 +247,20 @@ class StreamBuffer extends PrefetcherModule {
   }
 
   when (state === s_req) {
-    when (io.prefetchReq.fire()) {
+    when (io.prefetch.req.fire()) {
       state := s_resp
     }
   }
 
   when (state === s_resp) {
-    when (io.prefetchResp.fire()) {
+    when (io.prefetch.resp.fire()) {
       state := s_finish
-      buf(tail).resp := io.prefetchResp.bits
+      buf(tail).resp := io.prefetch.resp.bits
     }
   }
 
   when (state === s_finish) {
-    when (io.prefetchFinish.fire()) {
+    when (io.prefetch.finish.fire()) {
       state := s_idle
       valid(tail) := true.B
       tail := tail + 1.U
@@ -265,9 +287,10 @@ class StreamBuffer extends PrefetcherModule {
     io.addrs(i).valid := baseReq.valid && valid(i)
     io.addrs(i).bits := get_block_addr(buf(i).req.addr)
   }
-  io.prefetchr.req.valid := state === s_req
+  io.prefetch.req.valid := state === s_req
   io.prefetch.req.bits := prefetchReq
   io.prefetch.req.bits.addr := get_block_addr(prefetchReq.addr)
+  io.prefetch.req.bits.id := Cat(prefetcherID.U(clientIdWidth.W), io.entryId)
   io.prefetch.resp.ready := state === s_resp
   io.prefetch.finish.valid := state === s_finish
   // io.prefetch.finish.bits.client_id := buf(tail).resp.client_id
@@ -427,8 +450,8 @@ class StreamPrefetcher extends PrefetcherModule {
     streamBufs(i).io.prefetch.finish.ready := finishArb.io.in(i).ready
   }
 
-  io.prefetch.resp.ready := streamBufs.zipWithIndex.map((buf, i) => 
-    i.U === io.prefetch.resp.bits.id(entryIdMSB, entryIdLSB) && buf.io.prefetch.resp.ready).asUInt.orR
+  io.prefetch.resp.ready := VecInit(streamBufs.zipWithIndex.map{ case (buf, i) => 
+    i.U === io.prefetch.resp.bits.id(entryIdMSB, entryIdLSB) && buf.io.prefetch.resp.ready }).asUInt.orR
 
   io.prefetch.req <> reqArb.io.out
 
@@ -481,7 +504,7 @@ class L1IplusPrefetcher(enable: Boolean) extends PrefetcherModule {
   prefetcher.io.in.bits.req.addr := io.in.bits.req.addr
   prefetcher.io.in.bits.miss := io.in.bits.miss
 
-  io.prefetch.req.valid := prefetcher.io.prefetch_req.valid
+  io.prefetch.req.valid := prefetcher.io.prefetch.req.valid
   io.prefetch.req.bits := DontCare
   io.prefetch.req.bits.cmd := M_XRD // or M_PFR
   io.prefetch.req.bits.addr := prefetcher.io.prefetch.req.bits.addr

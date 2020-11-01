@@ -65,7 +65,7 @@ class IcacheMissEntry extends ICacheMissQueueModule
 {
     val io = IO(new Bundle{
         // MSHR ID
-        val id = Input(UInt(log2Up(cacheParams.nMissEntries).W))
+        val id = Input(UInt(entryIdWidth.W))
 
         val req = Flipped(DecoupledIO(new IcacheMissReq))
         val resp = DecoupledIO(new IcacheMissResp)
@@ -127,7 +127,7 @@ class IcacheMissEntry extends ICacheMissQueueModule
       }
 
       is(s_memReadResp){
-        when (io.mem_grant.bits.id === io.id && io.mem_grant.fire()) {
+        when (io.mem_grant.bits.id(entryIdMSB, entryIdLSB) === io.id && io.mem_grant.fire()) {
 	        respDataReg := io.mem_grant.bits.data
           state := Mux(needFlush || io.flush,s_wait_resp,s_write_back)
         }
@@ -161,7 +161,7 @@ class IcacheMissEntry extends ICacheMissQueueModule
     //mem request
     io.mem_acquire.bits.cmd := MemoryOpConstants.M_XRD
     io.mem_acquire.bits.addr := req.addr
-    io.mem_acquire.bits.id := io.id
+    io.mem_acquire.bits.id := Cat(cacheID.U(clientIdWidth.W), io.id)
 
 
 
@@ -206,7 +206,7 @@ class IcacheMissQueue extends ICacheMissQueueModule
   val entries = (0 until cacheParams.nMissEntries) map { i =>
     val entry = Module(new IcacheMissEntry)
 
-    entry.io.id := i.U(log2Up(cacheParams.nMissEntries).W)
+    entry.io.id := i.U(entryIdWidth.W)
     entry.io.flush := io.flush
 
     // entry req
@@ -224,7 +224,7 @@ class IcacheMissQueue extends ICacheMissQueueModule
 
     entry.io.mem_grant.valid := false.B
     entry.io.mem_grant.bits  := DontCare
-    when (io.mem_grant.bits.id === i.U) {
+    when (io.mem_grant.bits.id(entryIdMSB, entryIdLSB) === i.U) {
       entry.io.mem_grant <> io.mem_grant
     }
     entry
