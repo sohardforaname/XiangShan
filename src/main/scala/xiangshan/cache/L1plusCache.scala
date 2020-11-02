@@ -48,7 +48,7 @@ trait HasL1plusCacheParameters extends HasL1CacheParameters {
 
   def missQueueEntryIdWidth = log2Up(cfg.nMissEntries)
   def icachemisQueueEntryIdWidth = log2Up(icfg.nMissEntries)
-  def prefetcherEntryIdWidth = log2Up(pcfg.streamCnt)
+  def prefetcherEntryIdWidth = log2Up(pcfg.streamCnt*pcfg.streamSize)
   def clientIdWidth = log2Up(cfg.nClients) // l1i miss queue and l1+ prefetcher
   def entryIdWidth = max(icachemisQueueEntryIdWidth, prefetcherEntryIdWidth)
   def idWidth = clientIdWidth + entryIdWidth

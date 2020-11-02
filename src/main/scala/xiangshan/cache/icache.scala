@@ -36,7 +36,7 @@ trait HasICacheParameters extends HasL1CacheParameters {
   // the width of inner CPU data interface
   def cacheID = cacheParams.id
   def icachemisQueueEntryIdWidth = log2Up(cacheParams.nMissEntries)
-  def prefetcherEntryIdWidth = log2Up(l1plusPrefetcherParameters.streamCnt)
+  def prefetcherEntryIdWidth = log2Up(l1plusPrefetcherParameters.streamCnt * l1plusPrefetcherParameters.streamSize)
   def clientIdWidth = log2Up(l1plusCacheParameters.nClients) // l1i miss queue and l1+ prefetcher
   def entryIdWidth = max(icachemisQueueEntryIdWidth, prefetcherEntryIdWidth)
   def idWidth = clientIdWidth + entryIdWidth
