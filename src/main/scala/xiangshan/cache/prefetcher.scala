@@ -32,7 +32,7 @@ trait HasPrefetcherParameters extends HasXSParameter with MemoryOpConstants {
   def ageWidth = pcfg.ageWidth
   
   def icachemisQueueEntryIdWidth = log2Up(icacheParameters.nMissEntries)
-  def prefetcherEntryIdWidth = log2Up(pcfg.streamCnt)
+  def prefetcherEntryIdWidth = log2Up(pcfg.streamCnt*pcfg.streamSize)
   def clientIdWidth = log2Up(l1plusCacheParameters.nClients) // l1i miss queue and l1+ prefetcher
   def entryIdWidth = max(icachemisQueueEntryIdWidth, prefetcherEntryIdWidth)
   def idWidth = clientIdWidth + entryIdWidth
@@ -247,7 +247,7 @@ class StreamBuffer extends PrefetcherModule {
     prefetchReq(i).bits.addr := get_block_addr(Mux(i.U >= tail,
       tailReq.addr + (i.U - tail + 1.U)*(CacheLineSize/8).U,
       tailReq.addr + (i.U + streamSize.U - tail + 1.U)*(CacheLineSize/8).U)) // TODO: rewrite this
-    prefetchReq(i).bits.id := Cat(prefetcherID.U(clientIdWidth.W), io.entryId, i.U)
+    prefetchReq(i).bits.id := Cat(prefetcherID.U(clientIdWidth.W), io.entryId, i.U(log2Up(streamSize).W))
 
     prefetchResp(i).ready := state(i) === s_resp
 
