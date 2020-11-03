@@ -93,7 +93,7 @@ disassemble-xv6:
 	cp $(XV6_HOME)/build/code.txt ./d-xv6.log
 
 
-SUITE = cache.L2CacheTest
+SUITE = cache.CacheSystemTest
 
 unit-test:
 	cd .. && mill XiangShan.test.testOnly -o -s $(SUITE)

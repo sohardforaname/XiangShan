@@ -25,6 +25,7 @@ import xiangshan.backend.dispatch._
 import xiangshan.backend.roq._
 import xiangshan.backend.regfile._
 import xiangshan.backend.issue._
+import xiangshan.backend.rename._
 import xiangshan.mem._
 import xiangshan.cache.{DCache, DCacheLineReq, DCacheWordReq, MemoryOpConstants, PTW}
 import xiangshan.testutils.AddSinks
@@ -32,7 +33,7 @@ import xstransforms.PrintModuleName
 
 import scala.util.Random
 
-case class L2CacheTestParams
+case class L2CacheSystemTestParams
 (
   ways: Int = 4,
   banks: Int = 1,
@@ -44,15 +45,15 @@ case class L2CacheTestParams
   require(blockBytes >= beatBytes)
 }
 
-case object L2CacheTestKey extends Field[L2CacheTestParams]
+case object L2CacheSystemTestKey extends Field[L2CacheSystemTestParams]
 
-class CacheSystemTestIO extends Bundle{
-
+class CacheSystemTestIO extends XSBundle{
+  val testVec = Vec(RenameWidth, Flipped(DecoupledIO(new CfCtrl)))
 }
 
 class FakeBackend extends XSModule{
   val io = IO(new Bundle {
-    val testVec = Vec(RenameWidth, DecoupledIO(new MicroOp))
+    val cfInput = Vec(RenameWidth, Flipped(DecoupledIO(new CfCtrl)))
     val mem = Flipped(new MemToBackendIO)
   })
 
@@ -69,6 +70,7 @@ class FakeBackend extends XSModule{
   exeUnits.foreach(_.io.mcommit := DontCare)
 
   val dispatch = Module(new Dispatch)
+  val rename = Module(new Rename)
   val roq = Module(new Roq)
   val intRf = Module(new Regfile(
     numReadPorts = NRIntReadPorts,
@@ -86,7 +88,7 @@ class FakeBackend extends XSModule{
     hasZero = true,
     isMemRf = true
   ))
-
+  
   val memConfigs =
     Seq.fill(exuParameters.LduCnt)(Exu.ldExeUnitCfg) ++
     Seq.fill(exuParameters.StuCnt)(Exu.stExeUnitCfg)
@@ -101,6 +103,13 @@ class FakeBackend extends XSModule{
   def needData(a: ExuConfig, b: ExuConfig): Boolean =
     (a.readIntRf && b.writeIntRf) || (a.readFpRf && b.writeFpRf)
 
+  // backend redirect, flush pipeline
+  val redirect = Mux(
+    roq.io.redirect.valid,
+    roq.io.redirect,
+    io.mem.replayAll
+  )
+  
   val reservedStations = exeUnits.
     zipWithIndex.
     map({ case (exu, i) =>
@@ -109,6 +118,8 @@ class FakeBackend extends XSModule{
 
       val wakeUpDateVec = exuConfigs.zip(exeWbReqs).filter(x => needData(cfg, x._1)).map(_._2)
       val bypassCnt = exuConfigs.count(c => c.enableBypass && needData(cfg, c))
+
+      println(s"exu:${cfg.name} wakeupCnt:${wakeUpDateVec.length} bypassCnt:$bypassCnt")
 
       val rs = Module(new ReservationStation(
         cfg, wakeUpDateVec.length, bypassCnt, cfg.enableBypass, false
@@ -157,6 +168,7 @@ class FakeBackend extends XSModule{
       val iq = Module(new IssueQueue(
         cfg, wakeUpDateVec.length, bypassUopVec.length
       ))
+      println(s"exu:${cfg.name} wakeupCnt:${wakeUpDateVec.length} bypassCnt:${bypassUopVec.length}")
       iq.io.redirect <> redirect
       iq.io.tlbFeedback := io.mem.tlbFeedback(i - exuParameters.ExuCnt + exuParameters.LduCnt + exuParameters.StuCnt)
       iq.io.enq <> dispatch.io.enqIQCtrl(i)
@@ -175,23 +187,24 @@ class FakeBackend extends XSModule{
       }
       iq
     })
-  // backend redirect, flush pipeline
-  val redirect = Mux(
-    roq.io.redirect.valid,
-    roq.io.redirect,
-    io.mem.replayAll
-  )
+
 
   //module connection
   io.mem.commits <> roq.io.commits
   io.mem.roqDeqPtr := roq.io.roqDeqPtr
   io.mem.ldin <> issueQueues.filter(_.exuCfg == Exu.ldExeUnitCfg).map(_.io.deq)
   io.mem.stin <> issueQueues.filter(_.exuCfg == Exu.stExeUnitCfg).map(_.io.deq)
-  jmpExeUnit.io.exception.valid := roq.io.redirect.valid && roq.io.redirect.bits.isException
-  jmpExeUnit.io.exception.bits := roq.io.exception
 
+  rename.io.in <> io.cfInput
+  rename.io.redirect <> redirect
+  rename.io.roqCommits <> roq.io.commits
+  rename.io.intRfReadAddr <> dispatch.io.readIntRf.map(_.addr) ++ dispatch.io.intMemRegAddr
+  rename.io.intPregRdy <> dispatch.io.intPregRdy ++ dispatch.io.intMemRegRdy
+  rename.io.fpRfReadAddr <> dispatch.io.readFpRf.map(_.addr) ++ dispatch.io.fpMemRegAddr
+  rename.io.fpPregRdy <> dispatch.io.fpPregRdy ++ dispatch.io.fpMemRegRdy
+  rename.io.replayPregReq <> dispatch.io.replayPregReq
   dispatch.io.redirect <> redirect
-  dispatch.io.fromRename <> io.testVec
+  dispatch.io.fromRename <> rename.io.out
 
   roq.io.memRedirect <> io.mem.replayAll
   roq.io.brqRedirect <> DontCare
@@ -228,6 +241,8 @@ class FakeBackend extends XSModule{
   memRf.io.writePorts <> intRfWrite
   fpRf.io.writePorts <> wbFpResults.map(exuOutToRfWrite)
 
+  rename.io.wbIntResults <> wbIntResults
+  rename.io.wbFpResults <> wbFpResults
 
   roq.io.exeWbResults.take(exeWbReqs.length).zip(wbu.io.toRoq).foreach(x => x._1 := x._2)
   roq.io.exeWbResults.last := DontCare
@@ -238,7 +253,7 @@ class CacheSystemTestTop()(implicit p: Parameters) extends LazyModule{
   val dcache = LazyModule(new DCache())
   val ptw = LazyModule(new PTW())
   
-  val l2params = p(L2CacheTestKey)
+  val l2params = p(L2CacheSystemTestKey)
 
   private val l2 = LazyModule(new InclusiveCache(
     CacheParameters(
@@ -269,7 +284,7 @@ class CacheSystemTestTop()(implicit p: Parameters) extends LazyModule{
 
   axiRam.node := AXI4UserYanker() := TLToAXI4() := TLBuffer() := TLCacheCork() := l2.node
 
-  lazy val core = new LazyModuleImp(this) with HasXSLog with HasXSParameter
+  lazy val module = new LazyModuleImp(this) with HasXSLog with HasXSParameter
   {
     val io = IO(new CacheSystemTestIO)
 
@@ -280,6 +295,7 @@ class CacheSystemTestTop()(implicit p: Parameters) extends LazyModule{
     val ptwModule = ptw.module
 
     mem.io.backend   <> backend.io.mem
+    backend.io.cfInput     <>  io.testVec
 
     ptwModule.io.tlb(0) <> mem.io.ptw
     ptwModule.io.tlb(1) <> DontCare
@@ -288,6 +304,7 @@ class CacheSystemTestTop()(implicit p: Parameters) extends LazyModule{
     dcacheModule.io.lsu.lsroq   <> mem.io.loadMiss
     dcacheModule.io.lsu.atomics <> mem.io.atomics
     dcacheModule.io.lsu.store   <> mem.io.sbufferToDcache
+    mem.io.uncache <> DontCare
   }
 
 }
@@ -301,11 +318,11 @@ class CacheSystemTestTopWrapper()(implicit p: Parameters) extends LazyModule {
 
     AddSinks()
 
-    io <> testTop.core.io
+    io <> testTop.module.io
   }
 }
 
-class L2CacheTest extends FlatSpec with ChiselScalatestTester with Matchers{
+class CacheSystemTest extends FlatSpec with ChiselScalatestTester with Matchers{
 
   top.Parameters.set(top.Parameters.debugParameters)
 
@@ -318,13 +335,15 @@ class L2CacheTest extends FlatSpec with ChiselScalatestTester with Matchers{
   it should "run" in {
 
     implicit val p = Parameters((site, up, here) => {
-      case L2CacheTestKey =>
-        L2CacheTestParams()
+      case L2CacheSystemTestKey =>
+        L2CacheSystemTestParams()
     })
 
-     test(Module(new FakeBackend))
+     test(LazyModule(new CacheSystemTestTopWrapper()).module)
       .withAnnotations(annos){ c =>
         c.clock.step(100)
+        //TODO: Test Vector Generation
+        c.io.testVec <> DontCare
 
       }
   }
