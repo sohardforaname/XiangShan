@@ -46,6 +46,11 @@ class IFU extends XSModule with HasIFUConst
   val io = IO(new IFUIO)
   val bpu = BPU(EnableBPU)
   val pd = Module(new PreDecode)
+  printIOString
+  bpu.printIOString
+  pd.printIOString
+  // println(bpu.ioStringWithModuleName)
+  // println(pd.ioStringWithModuleName)
 
   val if2_redirect, if3_redirect, if4_redirect = WireInit(false.B)
   val if1_flush, if2_flush, if3_flush, if4_flush = WireInit(false.B)

@@ -180,10 +180,21 @@ trait HasXSLog { this: RawModule =>
   implicit val moduleName: String = this.name
 }
 
+trait WrapIOString { this: XSModule =>
+  def printIOString = {
+    println(s"${this.name}:")
+    this.io.elements.map { case (name, data) => {
+      println(s"$name -> ${data.getWidth}}")
+    }}
+    println()
+  }
+}
+
 abstract class XSModule extends Module
   with HasXSParameter
   with HasExceptionNO
   with HasXSLog
+  with WrapIOString
 
 //remove this trait after impl module logic
 trait NeedImpl { this: Module =>
