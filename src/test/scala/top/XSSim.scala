@@ -133,7 +133,7 @@ class XSSimTop()(implicit p: config.Parameters) extends LazyModule {
     BoringUtils.addSink(difftest.mideleg, "difftestMideleg")
     BoringUtils.addSink(difftest.medeleg, "difftestMedeleg")
     BoringUtils.addSink(difftest.scFailed, "difftestScFailed")
-    BoringUtils.addSink(difftest.lrscAddr, "difftestLrscAddr")
+    // BoringUtils.addSink(difftest.lrscAddr, "difftestLrscAddr")
     io.difftest := difftest
 
     val trap = WireInit(0.U.asTypeOf(new TrapIO))
