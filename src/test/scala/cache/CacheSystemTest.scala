@@ -8,6 +8,7 @@ import chiseltest.internal.VerilatorBackendAnnotation
 import chiseltest.internal.LineCoverageAnnotation
 import chiseltest._
 import chisel3.experimental.BundleLiterals._
+import chisel3.util.experimental.BoringUtils
 import firrtl.stage.RunFirrtlTransformAnnotation
 import chiseltest.ChiselScalatestTester
 import device.AXI4RAM
@@ -16,6 +17,7 @@ import freechips.rocketchip.diplomacy.{AddressSet, LazyModule, LazyModuleImp}
 import freechips.rocketchip.tilelink.{TLBuffer, TLCacheCork, TLToAXI4, TLXbar}
 import org.scalatest.{FlatSpec, Matchers}
 import sifive.blocks.inclusivecache.{CacheParameters, InclusiveCache, InclusiveCacheMicroParameters}
+import top.{DiffTestIO, TrapIO}
 import utils.{DebugIdentityNode, HoldUnless, XSDebug}
 import xiangshan.HasXSLog
 import xiangshan._
@@ -246,6 +248,15 @@ class FakeBackend extends XSModule{
 
   roq.io.exeWbResults.take(exeWbReqs.length).zip(wbu.io.toRoq).foreach(x => x._1 := x._2)
   roq.io.exeWbResults.last := DontCare
+
+  // regfile debug
+  val debugIntReg, debugFpReg = WireInit(VecInit(Seq.fill(32)(0.U(XLEN.W))))
+  BoringUtils.addSink(debugIntReg, "DEBUG_INT_ARCH_REG")
+  BoringUtils.addSink(debugFpReg, "DEBUG_FP_ARCH_REG")
+  val debugArchReg = WireInit(VecInit(debugIntReg ++ debugFpReg))
+  if (!env.FPGAPlatform) {
+    BoringUtils.addSource(debugArchReg, "difftestRegs")
+  }
 }
 
 class CacheSystemTestTop()(implicit p: Parameters) extends LazyModule{
@@ -305,8 +316,53 @@ class CacheSystemTestTop()(implicit p: Parameters) extends LazyModule{
     dcacheModule.io.lsu.atomics <> mem.io.atomics
     dcacheModule.io.lsu.store   <> mem.io.sbufferToDcache
     mem.io.uncache <> DontCare
-  }
 
+
+    //default
+    val difftest = WireInit(0.U.asTypeOf(new DiffTestIO))
+    BoringUtils.addSink(difftest.commit, "difftestCommit")
+    BoringUtils.addSink(difftest.thisPC, "difftestThisPC")
+    BoringUtils.addSink(difftest.thisINST, "difftestThisINST")
+    BoringUtils.addSink(difftest.skip, "difftestSkip")
+    BoringUtils.addSink(difftest.isRVC, "difftestIsRVC")
+    BoringUtils.addSink(difftest.wen, "difftestWen")
+    BoringUtils.addSink(difftest.wdata, "difftestWdata")
+    BoringUtils.addSink(difftest.wdst, "difftestWdst")
+    BoringUtils.addSink(difftest.wpc, "difftestWpc")
+    BoringUtils.addSink(difftest.intrNO, "difftestIntrNO")
+    BoringUtils.addSink(difftest.cause, "difftestCause")
+    BoringUtils.addSink(difftest.r, "difftestRegs")
+    BoringUtils.addSink(difftest.priviledgeMode, "difftestMode")
+    BoringUtils.addSink(difftest.mstatus, "difftestMstatus")
+    BoringUtils.addSink(difftest.sstatus, "difftestSstatus")
+    BoringUtils.addSink(difftest.mepc, "difftestMepc")
+    BoringUtils.addSink(difftest.sepc, "difftestSepc")
+    BoringUtils.addSink(difftest.mtval, "difftestMtval")
+    BoringUtils.addSink(difftest.stval, "difftestStval")
+    BoringUtils.addSink(difftest.mtvec, "difftestMtvec")
+    BoringUtils.addSink(difftest.stvec, "difftestStvec")
+    BoringUtils.addSink(difftest.mcause, "difftestMcause")
+    BoringUtils.addSink(difftest.scause, "difftestScause")
+    BoringUtils.addSink(difftest.satp, "difftestSatp")
+    BoringUtils.addSink(difftest.mip, "difftestMip")
+    BoringUtils.addSink(difftest.mie, "difftestMie")
+    BoringUtils.addSink(difftest.mscratch, "difftestMscratch")
+    BoringUtils.addSink(difftest.sscratch, "difftestSscratch")
+    BoringUtils.addSink(difftest.mideleg, "difftestMideleg")
+    BoringUtils.addSink(difftest.medeleg, "difftestMedeleg")
+    BoringUtils.addSink(difftest.scFailed, "difftestScFailed")
+
+    val trap = WireInit(0.U.asTypeOf(new TrapIO))
+    ExcitingUtils.addSink(trap.valid, "trapValid")
+    ExcitingUtils.addSink(trap.code, "trapCode")
+    ExcitingUtils.addSink(trap.pc, "trapPC")
+    ExcitingUtils.addSink(trap.cycleCnt, "trapCycleCnt")
+    ExcitingUtils.addSink(trap.instrCnt, "trapInstrCnt")
+
+    val defaultWire = WireInit(false.B)
+    BoringUtils.addSink(defaultWire, "FenceI")
+    ExcitingUtils.addSink(defaultWire, "isWFI")
+  }
 }
 
 class CacheSystemTestTopWrapper()(implicit p: Parameters) extends LazyModule {
@@ -341,7 +397,7 @@ class CacheSystemTest extends FlatSpec with ChiselScalatestTester with Matchers{
 
      test(LazyModule(new CacheSystemTestTopWrapper()).module)
       .withAnnotations(annos){ c =>
-        c.clock.step(100)
+        c.clock.step(10)
         //TODO: Test Vector Generation
         c.io.testVec <> DontCare
 
