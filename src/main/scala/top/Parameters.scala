@@ -23,7 +23,7 @@ object Parameters {
   val defaultParameters = Parameters()
   val simParameters = Parameters(envParameters = EnviromentParameters(FPGAPlatform = false)) // sim only, disable log
   val debugParameters = Parameters(envParameters = simParameters.envParameters.copy(EnableDebug = true)) // open log
-  val uniTestParame = Parameters(envParameters = EnviromentParameters(FPGAPlatform = false, EnableDebug = true)
+  val uniTestParame = Parameters(envParameters = EnviromentParameters(FPGAPlatform = false, EnableDebug = true))
 
   private var parameters = Parameters() // a default parameter, can be updated before use
   def get: Parameters = parameters

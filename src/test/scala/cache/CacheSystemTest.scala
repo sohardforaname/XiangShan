@@ -324,7 +324,7 @@ class CacheSystemTestTopWrapper()(implicit p: Parameters) extends LazyModule {
 
 class CacheSystemTest extends FlatSpec with ChiselScalatestTester with Matchers{
 
-  top.Parameters.set(top.Parameters.uniTestParameters)
+  top.Parameters.set(top.Parameters.uniTestParame)
 
   val annos = Seq(
     VerilatorBackendAnnotation,
