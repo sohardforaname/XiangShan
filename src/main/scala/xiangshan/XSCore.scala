@@ -9,7 +9,8 @@ import xiangshan.backend.dispatch.DispatchParameters
 import xiangshan.backend.exu.ExuParameters
 import xiangshan.frontend._
 import xiangshan.mem._
-import xiangshan.cache.{ICache, DCache, L1plusCache, DCacheParameters, ICacheParameters, L1plusCacheParameters, L1plusPrefetcherParameters, PTW, Uncache, L1IplusPrefetcher, L1plusCacheReq}
+import xiangshan.cache.{ICache, DCache, L1plusCache, DCacheParameters, ICacheParameters, L1plusCacheParameters, PTW, Uncache, L1plusCacheReq}
+import xiangshan.cache.prefetcher.{L1plusPrefetcherParameters, L1IplusPrefetcher}
 import chipsalliance.rocketchip.config
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import freechips.rocketchip.tilelink.{TLBundleParameters, TLCacheCork, TLBuffer, TLClientNode, TLIdentityNode, TLXbar}
@@ -32,6 +33,7 @@ case class XSCoreParameters
   HasFPU: Boolean = false,
   FectchWidth: Int = 8,
   EnableIPrefetcher: Boolean = true,
+  EnableL2Prefetcher: Boolean = true,
   EnableBPU: Boolean = true,
   EnableBPD: Boolean = true,
   EnableRAS: Boolean = true,
@@ -116,6 +118,7 @@ trait HasXSParameter {
   val FetchWidth = core.FectchWidth
   val PredictWidth = FetchWidth * 2
   val EnableIPrefetcher = core.EnableIPrefetcher
+  val EnableL2Prefetcher = core.EnableL2Prefetcher
   val EnableBPU = core.EnableBPU
   val EnableBPD = core.EnableBPD // enable backing predictor(like Tage) in BPUStage3
   val EnableRAS = core.EnableRAS
