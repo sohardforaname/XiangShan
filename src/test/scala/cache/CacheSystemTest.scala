@@ -33,7 +33,6 @@ import xiangshan.cache.{DCache, DCacheLineReq, DCacheWordReq, MemoryOpConstants,
 import xiangshan.testutils.AddSinks
 import xstransforms.PrintModuleName
 
-import scala.util.Random
 
 case class L2CacheSystemTestParams
 (
@@ -49,30 +48,22 @@ case class L2CacheSystemTestParams
 
 case object L2CacheSystemTestKey extends Field[L2CacheSystemTestParams]
 
-class CacheSystemTestIO extends XSBundle{
+class CacheSystemTestIO extends XSBundle {
   val testVec = Vec(RenameWidth, Flipped(DecoupledIO(new CfCtrl)))
 }
 
-class FakeBackend extends XSModule{
+class FakeBackend extends Module with HasXSParameter {
   val io = IO(new Bundle {
     val cfInput = Vec(RenameWidth, Flipped(DecoupledIO(new CfCtrl)))
     val mem = Flipped(new MemToBackendIO)
   })
 
-  val aluExeUnits =Array.tabulate(exuParameters.AluCnt)(_ => Module(new AluExeUnit))
-  val jmpExeUnit = Module(new JmpExeUnit)
-  val mulExeUnits = Array.tabulate(exuParameters.MulCnt)(_ => Module(new MulExeUnit))
-  val mduExeUnits = Array.tabulate(exuParameters.MduCnt)(_ => Module(new MulDivExeUnit))
-  // val fmacExeUnits = Array.tabulate(exuParameters.FmacCnt)(_ => Module(new Fmac))
-  // val fmiscExeUnits = Array.tabulate(exuParameters.FmiscCnt)(_ => Module(new Fmisc))
-  // val fmiscDivSqrtExeUnits = Array.tabulate(exuParameters.FmiscDivSqrtCnt)(_ => Module(new FmiscDivSqrt))
-  val exeUnits = jmpExeUnit +: (aluExeUnits ++ mulExeUnits ++ mduExeUnits)
-  exeUnits.foreach(_.io.exception := DontCare)
-  exeUnits.foreach(_.io.dmem := DontCare)
-  exeUnits.foreach(_.io.mcommit := DontCare)
+  val aluExeUnits = Array.tabulate(exuParameters.AluCnt)(_ => Module(new AluExeUnit))
+  val exeUnits = aluExeUnits
+  exeUnits.foreach(_.io <> DontCare)
 
-  val dispatch = Module(new Dispatch)
   val rename = Module(new Rename)
+  val dispatch = Module(new Dispatch)
   val roq = Module(new Roq)
   val intRf = Module(new Regfile(
     numReadPorts = NRIntReadPorts,
@@ -84,13 +75,7 @@ class FakeBackend extends XSModule{
     numWirtePorts = NRFpWritePorts,
     hasZero = false
   ))
-  val memRf = Module(new Regfile(
-    numReadPorts = 2*exuParameters.StuCnt + exuParameters.LduCnt,
-    numWirtePorts = NRIntWritePorts,
-    hasZero = true,
-    isMemRf = true
-  ))
-  
+
   val memConfigs =
     Seq.fill(exuParameters.LduCnt)(Exu.ldExeUnitCfg) ++
     Seq.fill(exuParameters.StuCnt)(Exu.stExeUnitCfg)
@@ -111,105 +96,91 @@ class FakeBackend extends XSModule{
     roq.io.redirect,
     io.mem.replayAll
   )
-  
-  val reservedStations = exeUnits.
-    zipWithIndex.
-    map({ case (exu, i) =>
 
-      val cfg = exu.config
+  val reservedStations  = exuConfigs.zipWithIndex.map({ case (cfg, i) =>
 
-      val wakeUpDateVec = exuConfigs.zip(exeWbReqs).filter(x => needData(cfg, x._1)).map(_._2)
-      val bypassCnt = exuConfigs.count(c => c.enableBypass && needData(cfg, c))
+    // NOTE: exu could have certern and uncertaion latency
+    // but could not have multiple certern latency
+    var certainLatency = -1
+    if(cfg.hasCertainLatency) { certainLatency = cfg.latency.latencyVal.get }
 
-      println(s"exu:${cfg.name} wakeupCnt:${wakeUpDateVec.length} bypassCnt:$bypassCnt")
+    val writeBackedData = exuConfigs.zip(exeWbReqs).filter(x => x._1.hasCertainLatency && needData(cfg, x._1)).map(_._2.bits.data)
+    val wakeupCnt = writeBackedData.length
 
-      val rs = Module(new ReservationStation(
-        cfg, wakeUpDateVec.length, bypassCnt, cfg.enableBypass, false
-      ))
-      rs.io.redirect <> redirect
-      rs.io.numExist <> dispatch.io.numExist(i)
-      rs.io.enqCtrl <> dispatch.io.enqIQCtrl(i)
-      rs.io.enqData <> dispatch.io.enqIQData(i)
-      for(
-        (wakeUpPort, exuOut) <-
-        rs.io.wakeUpPorts.zip(wakeUpDateVec)
-      ){
-        wakeUpPort.bits := exuOut.bits
-        wakeUpPort.valid := exuOut.valid
-      }
+    val extraListenPorts = exuConfigs
+      .zip(exeWbReqs)
+      .filter(x => x._1.hasUncertainlatency && needData(cfg, x._1))
+      .map(_._2)
+    val extraListenPortsCnt = extraListenPorts.length
 
-      exu.io.in <> rs.io.deq
-      exu.io.redirect <> redirect
-      rs
-    })
+    val feedback = (cfg == Exu.ldExeUnitCfg) || (cfg == Exu.stExeUnitCfg)
 
-  for( rs <- reservedStations){
-    rs.io.bypassUops <> reservedStations.
-      filter(x => x.enableBypass && needData(rs.exuCfg, x.exuCfg)).
-      map(_.io.selectedUop)
+    println(s"${i}: exu:${cfg.name} wakeupCnt: ${wakeupCnt} extraListenPorts: ${extraListenPortsCnt} delay:${certainLatency} feedback:${feedback}")
 
-    val bypassDataVec = exuConfigs.zip(exeWbReqs).
-      filter(x => x._1.enableBypass && needData(rs.exuCfg, x._1)).map(_._2)
+    val rs = Module(new ReservationStationNew(cfg, wakeupCnt, extraListenPortsCnt, fixedDelay = certainLatency, feedback = feedback))
 
-    for(i <- bypassDataVec.indices){
-      rs.io.bypassData(i).valid := bypassDataVec(i).valid
-      rs.io.bypassData(i).bits := bypassDataVec(i).bits
+    rs.io.redirect <> redirect
+    rs.io.numExist <> dispatch.io.numExist(i)
+    rs.io.enqCtrl <> dispatch.io.enqIQCtrl(i)
+    rs.io.enqData <> dispatch.io.enqIQData(i)
+
+    rs.io.writeBackedData <> writeBackedData
+    for((x, y) <- rs.io.extraListenPorts.zip(extraListenPorts)){
+      x.valid := y.fire()
+      x.bits := y.bits
     }
+
+    cfg match {
+      case Exu.ldExeUnitCfg =>
+      case Exu.stExeUnitCfg =>
+      case otherCfg =>
+        exeUnits(i).io.in <> rs.io.deq
+        exeUnits(i).io.redirect <> redirect
+        rs.io.tlbFeedback := DontCare
+    }
+
+    rs
+  })
+
+
+  for(rs <- reservedStations){
+    rs.io.broadcastedUops <> reservedStations.
+      filter(x => x.exuCfg.hasCertainLatency && needData(rs.exuCfg, x.exuCfg)).
+      map(_.io.selectedUop)
   }
-
-  val issueQueues = exuConfigs.
-    zipWithIndex.
-    takeRight(exuParameters.LduCnt + exuParameters.StuCnt).
-    map({case (cfg, i) =>
-      val wakeUpDateVec = exuConfigs.zip(exeWbReqs).filter(x => needData(cfg, x._1)).map(_._2)
-      val bypassUopVec = reservedStations.
-        filter(r => r.exuCfg.enableBypass && needData(cfg, r.exuCfg)).map(_.io.selectedUop)
-      val bypassDataVec = exuConfigs.zip(exeWbReqs).
-        filter(x => x._1.enableBypass && needData(cfg, x._1)).map(_._2)
-
-      val iq = Module(new IssueQueue(
-        cfg, wakeUpDateVec.length, bypassUopVec.length
-      ))
-      println(s"exu:${cfg.name} wakeupCnt:${wakeUpDateVec.length} bypassCnt:${bypassUopVec.length}")
-      iq.io.redirect <> redirect
-      iq.io.tlbFeedback := io.mem.tlbFeedback(i - exuParameters.ExuCnt + exuParameters.LduCnt + exuParameters.StuCnt)
-      iq.io.enq <> dispatch.io.enqIQCtrl(i)
-      dispatch.io.numExist(i) := iq.io.numExist
-      for(
-        (wakeUpPort, exuOut) <-
-        iq.io.wakeUpPorts.zip(wakeUpDateVec)
-      ){
-        wakeUpPort.bits := exuOut.bits
-        wakeUpPort.valid := exuOut.fire() // data after arbit
-      }
-      iq.io.bypassUops <> bypassUopVec
-      for(i <- bypassDataVec.indices){
-        iq.io.bypassData(i).valid := bypassDataVec(i).valid
-        iq.io.bypassData(i).bits := bypassDataVec(i).bits
-      }
-      iq
-    })
 
 
   //module connection
+  io.mem <> DontCare
   io.mem.commits <> roq.io.commits
   io.mem.roqDeqPtr := roq.io.roqDeqPtr
-  io.mem.ldin <> issueQueues.filter(_.exuCfg == Exu.ldExeUnitCfg).map(_.io.deq)
-  io.mem.stin <> issueQueues.filter(_.exuCfg == Exu.stExeUnitCfg).map(_.io.deq)
+  io.mem.ldin <> reservedStations.filter(_.exuCfg == Exu.ldExeUnitCfg).map(_.io.deq)
+  io.mem.stin <> reservedStations.filter(_.exuCfg == Exu.stExeUnitCfg).map(_.io.deq)
+
+  io.mem.exceptionAddr.lsIdx.lsroqIdx := roq.io.exception.lsroqIdx
+  io.mem.exceptionAddr.lsIdx.lqIdx := roq.io.exception.lqIdx
+  io.mem.exceptionAddr.lsIdx.sqIdx := roq.io.exception.sqIdx
+  io.mem.exceptionAddr.isStore := CommitType.lsInstIsStore(roq.io.exception.ctrl.commitType)
+
+  io.mem.tlbFeedback <> reservedStations.filter(
+    x => x.exuCfg == Exu.ldExeUnitCfg || x.exuCfg == Exu.stExeUnitCfg
+  ).map(_.io.tlbFeedback)
+  
 
   rename.io.in <> io.cfInput
   rename.io.redirect <> redirect
   rename.io.roqCommits <> roq.io.commits
-  rename.io.intRfReadAddr <> dispatch.io.readIntRf.map(_.addr) ++ dispatch.io.intMemRegAddr
+  rename.io.intRfReadAddr <> dispatch.io.readIntRf.map(_.addr) ++ dispatch.io.memIntRf.map(_.addr)
   rename.io.intPregRdy <> dispatch.io.intPregRdy ++ dispatch.io.intMemRegRdy
-  rename.io.fpRfReadAddr <> dispatch.io.readFpRf.map(_.addr) ++ dispatch.io.fpMemRegAddr
+  rename.io.fpRfReadAddr <> dispatch.io.readFpRf.map(_.addr) ++ dispatch.io.memFpRf.map(_.addr)
   rename.io.fpPregRdy <> dispatch.io.fpPregRdy ++ dispatch.io.fpMemRegRdy
   rename.io.replayPregReq <> dispatch.io.replayPregReq
+  dispatch.io <> DontCare
   dispatch.io.redirect <> redirect
   dispatch.io.fromRename <> rename.io.out
 
+  roq.io <> DontCare
   roq.io.memRedirect <> io.mem.replayAll
-  roq.io.brqRedirect <> DontCare
   roq.io.dp1Req <> dispatch.io.toRoq
   dispatch.io.roqIdxs <> roq.io.roqIdxs
   io.mem.dp1Req <> dispatch.io.toLsroq
@@ -219,9 +190,8 @@ class FakeBackend extends XSModule{
   dispatch.io.dequeueRoqIndex.bits := Mux(io.mem.oldestStore.valid, io.mem.oldestStore.bits, roq.io.commitRoqIndex.bits)
 
 
-  intRf.io.readPorts <> dispatch.io.readIntRf
-  fpRf.io.readPorts <> dispatch.io.readFpRf ++ issueQueues.flatMap(_.io.readFpRf)
-  memRf.io.readPorts <> issueQueues.flatMap(_.io.readIntRf)
+  intRf.io.readPorts <> dispatch.io.readIntRf ++ dispatch.io.memIntRf
+  fpRf.io.readPorts <> dispatch.io.readFpRf ++ dispatch.io.memFpRf
 
   io.mem.redirect <> redirect
 
@@ -238,9 +208,8 @@ class FakeBackend extends XSModule{
     rfWrite.data := x.bits.data
     rfWrite
   }
-  val intRfWrite = wbIntResults.map(exuOutToRfWrite)
-  intRf.io.writePorts <> intRfWrite
-  memRf.io.writePorts <> intRfWrite
+
+  intRf.io.writePorts <> wbIntResults.map(exuOutToRfWrite)
   fpRf.io.writePorts <> wbFpResults.map(exuOutToRfWrite)
 
   rename.io.wbIntResults <> wbIntResults
@@ -251,11 +220,11 @@ class FakeBackend extends XSModule{
 
   // regfile debug
   val debugIntReg, debugFpReg = WireInit(VecInit(Seq.fill(32)(0.U(XLEN.W))))
-  BoringUtils.addSink(debugIntReg, "DEBUG_INT_ARCH_REG")
-  BoringUtils.addSink(debugFpReg, "DEBUG_FP_ARCH_REG")
+  ExcitingUtils.addSink(debugIntReg, "DEBUG_INT_ARCH_REG", ExcitingUtils.Debug)
+  ExcitingUtils.addSink(debugFpReg, "DEBUG_FP_ARCH_REG", ExcitingUtils.Debug)
   val debugArchReg = WireInit(VecInit(debugIntReg ++ debugFpReg))
   if (!env.FPGAPlatform) {
-    BoringUtils.addSource(debugArchReg, "difftestRegs")
+    ExcitingUtils.addSource(debugArchReg, "difftestRegs", ExcitingUtils.Debug)
   }
 }
 
@@ -295,8 +264,7 @@ class CacheSystemTestTop()(implicit p: Parameters) extends LazyModule{
 
   axiRam.node := AXI4UserYanker() := TLToAXI4() := TLBuffer() := TLCacheCork() := l2.node
 
-  lazy val module = new LazyModuleImp(this) with HasXSLog with HasXSParameter
-  {
+  lazy val module = new LazyModuleImp(this) with HasXSLog with HasXSParameter {
     val io = IO(new CacheSystemTestIO)
 
     val backend = Module(new FakeBackend)
@@ -305,63 +273,17 @@ class CacheSystemTestTop()(implicit p: Parameters) extends LazyModule{
     val dcacheModule = dcache.module
     val ptwModule = ptw.module
 
-    mem.io.backend   <> backend.io.mem
-    backend.io.cfInput     <>  io.testVec
+    mem.io.backend <> backend.io.mem
+    backend.io.cfInput <> io.testVec
 
     ptwModule.io.tlb(0) <> mem.io.ptw
     ptwModule.io.tlb(1) <> DontCare
 
-    dcacheModule.io.lsu.load    <> mem.io.loadUnitToDcacheVec
-    dcacheModule.io.lsu.lsroq   <> mem.io.loadMiss
+    dcacheModule.io.lsu.load <> mem.io.loadUnitToDcacheVec
+    dcacheModule.io.lsu.lsroq <> mem.io.loadMiss
     dcacheModule.io.lsu.atomics <> mem.io.atomics
-    dcacheModule.io.lsu.store   <> mem.io.sbufferToDcache
+    dcacheModule.io.lsu.store <> mem.io.sbufferToDcache
     mem.io.uncache <> DontCare
-
-
-    //default
-    val difftest = WireInit(0.U.asTypeOf(new DiffTestIO))
-    BoringUtils.addSink(difftest.commit, "difftestCommit")
-    BoringUtils.addSink(difftest.thisPC, "difftestThisPC")
-    BoringUtils.addSink(difftest.thisINST, "difftestThisINST")
-    BoringUtils.addSink(difftest.skip, "difftestSkip")
-    BoringUtils.addSink(difftest.isRVC, "difftestIsRVC")
-    BoringUtils.addSink(difftest.wen, "difftestWen")
-    BoringUtils.addSink(difftest.wdata, "difftestWdata")
-    BoringUtils.addSink(difftest.wdst, "difftestWdst")
-    BoringUtils.addSink(difftest.wpc, "difftestWpc")
-    BoringUtils.addSink(difftest.intrNO, "difftestIntrNO")
-    BoringUtils.addSink(difftest.cause, "difftestCause")
-    BoringUtils.addSink(difftest.r, "difftestRegs")
-    BoringUtils.addSink(difftest.priviledgeMode, "difftestMode")
-    BoringUtils.addSink(difftest.mstatus, "difftestMstatus")
-    BoringUtils.addSink(difftest.sstatus, "difftestSstatus")
-    BoringUtils.addSink(difftest.mepc, "difftestMepc")
-    BoringUtils.addSink(difftest.sepc, "difftestSepc")
-    BoringUtils.addSink(difftest.mtval, "difftestMtval")
-    BoringUtils.addSink(difftest.stval, "difftestStval")
-    BoringUtils.addSink(difftest.mtvec, "difftestMtvec")
-    BoringUtils.addSink(difftest.stvec, "difftestStvec")
-    BoringUtils.addSink(difftest.mcause, "difftestMcause")
-    BoringUtils.addSink(difftest.scause, "difftestScause")
-    BoringUtils.addSink(difftest.satp, "difftestSatp")
-    BoringUtils.addSink(difftest.mip, "difftestMip")
-    BoringUtils.addSink(difftest.mie, "difftestMie")
-    BoringUtils.addSink(difftest.mscratch, "difftestMscratch")
-    BoringUtils.addSink(difftest.sscratch, "difftestSscratch")
-    BoringUtils.addSink(difftest.mideleg, "difftestMideleg")
-    BoringUtils.addSink(difftest.medeleg, "difftestMedeleg")
-    BoringUtils.addSink(difftest.scFailed, "difftestScFailed")
-
-    val trap = WireInit(0.U.asTypeOf(new TrapIO))
-    ExcitingUtils.addSink(trap.valid, "trapValid")
-    ExcitingUtils.addSink(trap.code, "trapCode")
-    ExcitingUtils.addSink(trap.pc, "trapPC")
-    ExcitingUtils.addSink(trap.cycleCnt, "trapCycleCnt")
-    ExcitingUtils.addSink(trap.instrCnt, "trapInstrCnt")
-
-    val defaultWire = WireInit(false.B)
-    BoringUtils.addSink(defaultWire, "FenceI")
-    ExcitingUtils.addSink(defaultWire, "isWFI")
   }
 }
 
@@ -378,9 +300,11 @@ class CacheSystemTestTopWrapper()(implicit p: Parameters) extends LazyModule {
   }
 }
 
-class CacheSystemTest extends FlatSpec with ChiselScalatestTester with Matchers{
 
-  top.Parameters.set(top.Parameters.uniTestParame)
+
+class CacheSystemTest extends FlatSpec with ChiselScalatestTester with Matchers {
+
+  top.Parameters.set(top.Parameters.defaultParameters)
 
   val annos = Seq(
     VerilatorBackendAnnotation,
@@ -399,6 +323,7 @@ class CacheSystemTest extends FlatSpec with ChiselScalatestTester with Matchers{
         L2CacheSystemTestParams()
     })
 
+<<<<<<< HEAD
      test(LazyModule(new CacheSystemTestTopWrapper()).module)
       .withAnnotations(annos){ c =>
         //c.io.testVec
@@ -539,4 +464,12 @@ class CfStQueue(nEntries: Int, width: Int, name: String){
   }
 
 
+=======
+    test(LazyModule(new CacheSystemTestTopWrapper()).module).withAnnotations(annos){ c =>
+      c.clock.step(10)
+      //TODO: Test Vector Generation
+      //c.io.testVec <> DontCare
+    }
+  }
+>>>>>>> c393640b27e45ccace1a69018ad58ddff7834b89
 }
