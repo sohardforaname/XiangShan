@@ -388,6 +388,10 @@ class CacheSystemTest extends FlatSpec with ChiselScalatestTester with Matchers{
     RunFirrtlTransformAnnotation(new PrintModuleName)
   )
 
+  //test wdata
+
+  val r = scala.util.Random
+
   it should "run" in {
 
     implicit val p = Parameters((site, up, here) => {
@@ -397,10 +401,142 @@ class CacheSystemTest extends FlatSpec with ChiselScalatestTester with Matchers{
 
      test(LazyModule(new CacheSystemTestTopWrapper()).module)
       .withAnnotations(annos){ c =>
+        //c.io.testVec
         c.clock.step(10)
         //TODO: Test Vector Generation
-        c.io.testVec <> DontCare
+        def gen_st_vec() = {
+          for(i <- 0 until nRegs){
+          }
+          
+        }
+
+        def gen_ld_vec() = {
+
+        }
+
 
       }
   }
+}
+
+case class StReq(
+  addr: Long,
+  wdata: BigInt,
+  stype: Int,
+  srcReg: Int,
+  offset: Int
+) {
+  override def toString() : String = {
+    return f"addr: $addr%x wdata: $wdata%x sype: $stype%d srcReg: $srcReg%d offset: $offset%x"
+  }  
+}
+
+case class QueueEntry(
+  var id: Int, // it's transaction id
+  req: StReq
+) {
+  override def toString() : String = {
+    return f"id: $id%d req: $req"
+  }
+}
+
+
+class CfStQueue(nEntries: Int, width: Int, name: String){
+  val queue = new ArrayBuffer[QueueEntry]()
+  val IdPool = new IdPool(nEntries)
+
+  def enq(req: StReq) = {
+    queue += new QueueEntry(-1, req)
+  }
+
+  def select(): Int = {
+    for (i <- 0 until queue.size) {
+      if (queue(i).id == -1)
+        return i
+    }
+    return -1
+  }
+
+  def retire(tID: Int) = {
+    println(f"$name retire transaction: $tId%d")
+    for (i <- 0 until queue.size) {
+      if (queue(i).id == tId) {
+        // remove this request
+        queue.remove(i)
+        println(f"$name retire req: $i%d transaction: $tId%d")
+        return
+      }
+    }
+  }
+
+  def issue(idx: Int, tId: Int) = {
+    println(f"$name issue req: $idx%d transaction: $tId%d")
+    assert(queue(idx).id == -1)
+    queue(idx).id = tId
+  }
+
+  def lookUp(tID: Int): Array[StReq] = {
+    for(i <- 0 util nEntries){
+      if(queue(i).id == tId) {
+        return queue(i).req
+      }
+    }
+    return StReq(0,0,0,0,0)
+  }
+
+  var reqWaiting = Array[Boolean](width)
+  def init(): Unit = {
+    idPool.init()
+    queue.clear()
+    reqWaiting = false    
+  }
+
+  def isFinished() = queue.isEmpty
+
+  def sendOneSt(reqvec: CacheSystemTestIO): Int ={
+    val inputVec = reqvec.testVec
+
+    //if last req sent and allow to in
+    //reset the flag and valid
+    for(i <- 0 until width){
+      if(reqWaiting && input(i).ready.peek().litToBoolean){
+        reqWaiting(i) = false
+        input(i).valid.poke(false.B)
+      }
+    }
+
+    val reqIdx = select()
+    if(reqWaiting || reqIdx == -1){
+      println(s"req can not be sent!")
+      return -1
+    }
+
+    val tID = idPool.allocate()
+    if (tID == -1) {
+      println(s"no trasaction id availabe")
+      return -1
+    }
+
+    val inputGateNum = tID % width
+    val input = inputVec(inputGateNum)
+
+    reqWaiting = true
+
+    issue(reqIdx,tID)
+
+    val r = queue(reqIdx).req
+    input.valid.poke(true.B)
+    input.bits.cf.pc.poke(tID.U)
+    input.bits.ctrl.src1Type.poke(SrcType.reg)
+    input.bits.ctrl.src2Type.poke(SrcType.reg)
+    input.bits.ctrl.lsrc1.poke(r.srcReg.U)
+    input.bits.ctrl.lsrc2.poke(r.addr.U)
+    input.bits.ctrl.fuType.poke(FuType.stu)
+    input.bits.ctrl.fuOpType.poke(LSUOpType.sd)
+    input.bits.ctrl.imm.poke(r.offset.U)
+
+    return tID 
+  }
+
+
 }

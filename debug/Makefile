@@ -98,7 +98,8 @@ disassemble-xv6:
 SUITE = cache.CacheSystemTest
 
 unit-test:
-	cd .. && mill XiangShan.test.testOnly -o -s $(SUITE)
+	cd .. && mill XiangShan.test.testOnly -o -s $(SUITE) 
+	#> unitest.log
 
 unit-test-all:
 	cd .. && mill XiangShan.test.test -P$(P)
