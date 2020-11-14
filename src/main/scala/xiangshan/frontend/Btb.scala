@@ -264,10 +264,44 @@ class BTB extends BasePredictor with BTBParams{
   }
 }
 
+
+class BtbBugMaker extends XSModule with BTBParams {
+
+  val io = IO(new Bundle() {
+    val out = Output(new BtbMetaEntry)
+  })
+
+  val meta = List.fill(BtbWays) {
+    List.fill(BtbBanks) {
+      val m = Module(new SRAMTemplate(new BtbMetaEntry, set = nRows, shouldReset = true, holdRead = true))
+      m.io <> DontCare
+      m
+    }
+  }
+
+  val metaRead = VecInit((0 until BtbWays).map(w =>
+    VecInit((0 until BtbBanks).map( b => meta(w)(b).io.r.resp.data(0)))
+  ))
+
+  // fake signals ... only used to make bug
+  val totalHits = VecInit((0 until BtbBanks).map( b =>
+    VecInit((0 until BtbWays).map( w =>
+      metaRead(w)(b).valid
+    ))
+  ))
+  val bankHits = VecInit(totalHits.map(_.reduce(_||_)))
+  val bankHitWays = VecInit(totalHits.map(PriorityEncoder(_)))
+
+  val bankIdxInOrder = VecInit((0 until BtbBanks).map(b => b.U))
+
+  io.out := metaRead(bankHitWays(bankIdxInOrder(0)))(bankIdxInOrder(0))
+
+}
+
 object BtbGen extends App {
   override def main(args: Array[String]): Unit = {
     (new ChiselStage).execute(args, Seq(
-      ChiselGeneratorAnnotation(() => new BTB)
+      ChiselGeneratorAnnotation(() => new BtbBugMaker)
     ))
   }
 }
