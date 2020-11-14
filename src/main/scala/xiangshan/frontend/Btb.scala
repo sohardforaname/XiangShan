@@ -1,6 +1,7 @@
 package xiangshan.frontend
 
 import chisel3._
+import chisel3.stage.{ChiselGeneratorAnnotation, ChiselStage}
 import chisel3.util._
 import xiangshan._
 import xiangshan.backend.ALUOpType
@@ -260,5 +261,13 @@ class BTB extends BasePredictor with BTBParams{
       // the second branch will overwrite the first branch
   }
 
+  }
+}
+
+object BtbGen extends App {
+  override def main(args: Array[String]): Unit = {
+    (new ChiselStage).execute(args, Seq(
+      ChiselGeneratorAnnotation(() => new BTB)
+    ))
   }
 }
