@@ -15,6 +15,7 @@ trait HasPrefetcherParameters extends HasXSParameter with MemoryOpConstants {
   val blockOffBits = log2Up(icacheParameters.blockBytes)
   def get_block_addr(addr: UInt) = (addr >> blockOffBits) << blockOffBits
 
+  // stream prefetcher(l1plus)
   def streamCnt = pcfg.streamCnt
   def streamSize = pcfg.streamSize
   def ageWidth = pcfg.ageWidth
@@ -28,6 +29,21 @@ trait HasPrefetcherParameters extends HasXSParameter with MemoryOpConstants {
   def entryIdLSB = 0
 
   def prefetcherID = pcfg.id
+
+  // best-offset prefetcher(l2)
+  val l2cfg = l2PrefetcherParameters
+  def rrTableEntries = l2cfg.rrTableEntries
+  def rrTagBits = l2cfg.rrTagBits
+  def rrIdxBits = log2Up(rrTableEntries)
+  def scoreBits = l2cfg.scoreBits
+  def scoreMax = (1 << scoreBits) - 1
+  def roundMax = l2cfg.roundMax
+  def roundBits = log2Up(roundMax)
+  def badScore = l2cfg.badScore
+  def offsetList = l2cfg.offsetList
+  def scores = l2cfg.scores
+  def offsetWidth = log2Up(offsetList(scores - 1)) + 1
+  def prefetchEntries = 8
 }
 
 abstract class PrefetcherModule extends XSModule

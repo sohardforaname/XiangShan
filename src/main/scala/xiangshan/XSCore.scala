@@ -10,7 +10,7 @@ import xiangshan.backend.exu.ExuParameters
 import xiangshan.frontend._
 import xiangshan.mem._
 import xiangshan.cache.{ICache, DCache, L1plusCache, DCacheParameters, ICacheParameters, L1plusCacheParameters, PTW, Uncache, L1plusCacheReq}
-import xiangshan.cache.prefetcher.{L1plusPrefetcherParameters, L1IplusPrefetcher}
+import xiangshan.cache.prefetcher.{L1plusPrefetcherParameters, L1IplusPrefetcher, L2PrefetcherParameters}
 import chipsalliance.rocketchip.config
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp}
 import freechips.rocketchip.tilelink.{TLBundleParameters, TLCacheCork, TLBuffer, TLClientNode, TLIdentityNode, TLXbar}
@@ -197,6 +197,10 @@ trait HasXSParameter {
     nMissEntries = 16,
     nLoadMissEntries = 8,
     nStoreMissEntries = 8
+  )
+
+  val l2PrefetcherParameters = L2PrefetcherParameters(
+    // TODO
   )
 
   val LRSCCycles = 100
