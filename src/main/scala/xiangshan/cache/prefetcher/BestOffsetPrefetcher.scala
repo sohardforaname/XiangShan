@@ -37,6 +37,10 @@ case class L2PrefetcherParameters (
 class ScoreTableEntry extends PrefetcherBundle {
   val offset = UInt(offsetWidth.W)
   val score = UInt(scoreBits.W)
+
+  override def toPrintable: Printable = {
+    p"${offset}:${score}"
+  }
 }
 
 object ScoreTableEntry {
@@ -53,17 +57,29 @@ class TestOffsetReq extends PrefetcherBundle {
   val addr = UInt(PAddrBits.W) // X
   val testOffset = UInt(offsetWidth.W) // d
   val ptr = UInt(log2Up(scores).W) // index of testOffset in offset list
+  
+  override def toPrintable: Printable = {
+    p"addr=0x${Hexadecimal(addr)} off=${testOffset} ptr=${ptr}"
+  }
 }
 
 class TestOffsetResp extends PrefetcherBundle {
   val hit = Bool()
   val testOffset = UInt(offsetWidth.W)
   val ptr = UInt(log2Up(scores).W)
+
+  override def toPrintable: Printable = {
+    p"hit=${hit} off=${testOffset} ptr=${ptr}"
+  }
 }
 
 class TestOffsetBundle extends PrefetcherBundle {
   val req = DecoupledIO(new TestOffsetReq)
   val resp = Flipped(ValidIO(new TestOffsetResp))
+
+  override def toPrintable: Printable = {
+    p"req: v=${req.valid} r=${req.ready} ${req.bits} resp: v=${resp.valid} ${resp.bits}"
+  }
 }
 
 class RecentRequestTable extends PrefetcherModule {
@@ -87,6 +103,10 @@ class RecentRequestTable extends PrefetcherModule {
   def rrTableEntry() = new Bundle {
     val valid = Bool()
     val tag = UInt(rrTagBits.W)
+
+    override def toPrintable: Printable = {
+      p"${valid}  ${Hexadecimal(tag)}"
+    }
   }
 
   val rrTable = Module(new SRAMTemplate(rrTableEntry(), set = rrTableEntries, way = 1, shouldReset = true))
@@ -118,6 +138,11 @@ class RecentRequestTable extends PrefetcherModule {
   io.read.resp.bits.ptr := RegNext(io.read.req.bits.ptr)
   io.read.resp.bits.hit := rData.valid && rData.tag === RegNext(tag(rAddr))
 
+  XSDebug(io.write.valid, p"[io.write] v=${io.write.valid} bits=${io.write.bits}\n")
+  XSDebug(p"[io.read]  ${io.read}\n")
+  XSDebug(io.write.valid, p"wAddr=0x${Hexadecimal(wAddr)} idx=${Hexadecimal(idx(wAddr))} tag=${Hexadecimal(tag(wAddr))}\n")
+  XSDebug(io.read.req.fire(), p"rAddr=${Hexadecimal(rAddr)} idx=${Hexadecimal(idx(rAddr))} rData=${rData}\n")
+  XSDebug(wrConflict, p"write and read conflict!\n")
 }
 
 class OffsetScoreTable extends PrefetcherModule {
@@ -215,6 +240,14 @@ class OffsetScoreTable extends PrefetcherModule {
   io.test.req.bits.testOffset := testOffset
   io.test.req.bits.ptr := ptr
 
+
+  XSDebug(p"[io.test] ${io.test}\n")
+  for (i <- 0 until scores) {
+    if (i % 10 == 0) { XSDebug(p"${st(i)} ") }
+    else if (i % 10 != 9) { XSDebug(false, true.B, p"${st(i)} ") }
+    else { XSDebug(false, true.B, p"${st(i)}\n") }
+  }
+  XSDebug(p"state=${state} ptr=${ptr} round=${round} d=${testOffset} D=${prefetchOffset} winner=${winnerEntry}\n")
 }
 
 class BestOffsetPrefetcherIO extends PrefetcherBundle {
@@ -229,12 +262,27 @@ class BestOffsetPrefetcherIO extends PrefetcherBundle {
     val resp = Flipped(DecoupledIO(new PrefetchResp))
     val finish = DecoupledIO(new PrefetchFinish)
   }
+
+  override def toPrintable: Printable = {
+    p"[io.in] v=${in.valid} r=${in.ready} req: ${in.bits.req} miss=${in.bits.miss} prefetched=${in.bits.prefetched}\n" +
+      p"[io.prefetch] req: v=${prefetch.req.valid} r=${prefetch.req.ready} ${prefetch.req.bits} " +
+      p"resp: v=${prefetch.resp.valid} r=${prefetch.resp.ready} ${prefetch.resp.bits} " +
+      p"finish: v=${prefetch.finish.valid} r=${prefetch.finish.ready} ${prefetch.finish.bits}"
+  }
 }
 
 class BestOffsetPrefetcherEntryIO extends BestOffsetPrefetcherIO {
   val prefetchOffset = Input(UInt(offsetWidth.W))
   val id = Input(UInt(log2Up(prefetchEntries).W))
   val addr = Output(ValidIO(UInt(PAddrBits.W)))
+
+  override def toPrintable: Printable = {
+    p"[io.in] v=${in.valid} r=${in.ready} req: ${in.bits.req} miss=${in.bits.miss} prefetched=${in.bits.prefetched}\n" +
+      p"[io.prefetch] req: v=${prefetch.req.valid} r=${prefetch.req.ready} ${prefetch.req.bits} " +
+      p"resp: v=${prefetch.resp.valid} r=${prefetch.resp.ready} ${prefetch.resp.bits} " +
+      p"finish: v=${prefetch.finish.valid} r=${prefetch.finish.ready} ${prefetch.finish.bits}\n" +
+      p"[io]prefetchOffset=${prefetchOffset} id=${Hexadecimal(id)} addr=(v ${addr.valid})0x${Hexadecimal(addr.bits)}"
+  }
 }
 
 class BestOffsetPrefetcherEntry extends PrefetcherModule {
@@ -281,6 +329,9 @@ class BestOffsetPrefetcherEntry extends PrefetcherModule {
   io.prefetch.finish.bits.id := resp.id
   io.addr.valid := state =/= s_idle
   io.addr.bits := req.addr
+
+  XSDebug(p"${io}\n")
+  XSDebug(p"state=${state} req:${req} resp:${resp}\n")
 
 }
 
@@ -346,5 +397,7 @@ class BestOffsetPrefetcher extends PrefetcherModule {
 
   scoreTable.io.test.resp <> rrTable.io.read.resp
 
+  XSDebug(p"${io}\n")
+  XSDebug(p"entryFree=${Binary(entryFree.asUInt)} entryAllocIdx=${entryAllocIdx}\n")
 
 }
