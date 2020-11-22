@@ -409,3 +409,135 @@ class Queue(nEntries: Int, width: Int, name: String){
   def isFinished() = queue.isEmpty
 
 }
+
+
+class StoreQueue (nEntries: Int, width: Int) extends Queue(nEntries, width, "StoreQueue"){
+  def sendOneReq(reqvec: CacheSystemTestIO): Int ={
+    val inputVec = reqvec.testVec
+
+    //if last req sent and allow to in
+    //reset the flag and valid
+    for(i <- 0 until width){
+      if(reqWaiting(i) && input(i).ready.peek().litToBoolean){
+        reqWaiting(i) = false
+        input(i).valid.poke(false.B)
+      }
+    }
+
+    val reqIdx = select()
+    for(i <- 0 until width){
+      if(reqWaiting(i) || reqIdx == -1){
+      println(s"req can not be sent!")
+      return -1
+      }
+    }
+
+    //no free for trasaction ID
+    val tID = idPool.allocate()
+    if (tID == -1) {
+      println(s"no trasaction id availabe")
+      return -1
+    }
+
+    val inputGateNum = tID % width
+    val input = inputVec(inputGateNum)
+
+    reqWaiting(inputGateNum) = true    
+
+    issue(reqIdx,tID)
+
+    val r = queue(reqIdx).req
+    input.valid.poke(true.B)
+    input.bits.cf.pc.poke(tID.U)
+    input.bits.ctrl.src1Type.poke(SrcType.reg)
+    input.bits.ctrl.src2Type.poke(SrcType.reg)
+    input.bits.ctrl.lsrc1.poke(r.src1Reg.U)
+    input.bits.ctrl.lsrc2.poke(r.src2Reg.U)
+    input.bits.ctrl.fuType.poke(FuType.stu)
+    input.bits.ctrl.fuOpType.poke(LSUOpType.sw)
+    input.bits.ctrl.imm.poke(0.U)
+
+    return tID 
+  }
+
+  def handleResp(port: CacheSystemTestIO) = {
+    val commit = port.retiredVec
+    // always ready
+    
+    for(i <- 0 until CommitWidth{
+        commit(i).ready.poke(true.B)
+        if (resp.valid.peek().litToBoolean) {
+        val id = commit.bits.pc.peek().litValue.longValue.toInt
+        //Don't free
+        //idPool.free(id)
+        retire(id)
+    }
+  }
+
+}
+
+class LoadQueue (nEntries: Int, width: Int) extends Queue(nEntries, width, "LoadQueue"){
+  def sendOneReq(reqvec: CacheSystemTestIO): Int ={
+    val inputVec = reqvec.testVec
+
+    //if last req sent and allow to in
+    //reset the flag and valid
+    for(i <- 0 until width){
+      if(reqWaiting(i) && inputVec(i).ready.peek().litToBoolean){
+        reqWaiting(i) = false
+        inputVec(i).valid.poke(false.B)
+      }
+    }
+
+    val reqIdx = select()
+    for(i <- 0 until width){
+      if(reqWaiting(i) || reqIdx == -1){
+      println(s"req can not be sent!")
+      return -1
+      }
+    }
+
+    //no free for trasaction ID
+    val tID = idPool.allocate()
+    if (tID == -1) {
+      println(s"no trasaction id availabe")
+      return -1
+    }
+
+    val inputGateNum = tID % width
+    val input = inputVec(inputGateNum)
+
+    reqWaiting(inputGateNum) = true    
+
+    issue(reqIdx,tID)
+
+    val r = queue(reqIdx).req
+    input.valid.poke(true.B)
+    input.bits.cf.pc.poke(tID.U)
+    input.bits.ctrl.src1Type.poke(SrcType.reg)
+    input.bits.ctrl.src2Type.poke( SrcType.imm)
+    input.bits.ctrl.lsrc1.poke(r.src1Reg.U)
+    input.bits.ctrl.ldest.poke(r.destReg.U)
+    input.bits.ctrl.fuType.poke(FuType.ldu)
+    input.bits.ctrl.fuOpType.poke(LSUOpType.lw)
+    input.bits.ctrl.imm.poke(0.U)
+
+    return tID 
+  }
+
+  def handleResp(port: CacheSystemTestIO, trace: Array[(Int,Int))]) = {
+    val commit = port.retiredVec
+    // always ready
+    
+    for(i <- 0 until CommitWidth{
+        commit(i).ready.poke(true.B)
+        if (commit(i).valid.peek().litToBoolean) {
+            val id = commit(i).bits.pc.peek().litValue.longValue.toInt
+            //Don't free
+            //idPool.free(id)
+            retire(id)
+            assert(commit(i).bits.addr == go(id)._1 && commit(i).bits.wdata == trace(i)._2,"Error: wrong addr  or with wrong data")
+        }
+    }
+  }
+}
