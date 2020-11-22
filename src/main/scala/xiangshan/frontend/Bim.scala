@@ -119,6 +119,8 @@ class BIM extends BasePredictor with BimParams{
     bim(b).io.w.req.bits.data := Mux(doing_reset, 2.U(2.W), newCtr)
   }
 
+  override val debug = true
+
   if (BPUDebug && debug) {
     XSDebug(doing_reset, "Reseting...\n")
     XSDebug("[update] v=%d pc=%x pnpc=%x tgt=%x brTgt=%x\n", io.update.valid, u.pc, u.pnpc, u.target, u.brTarget)
