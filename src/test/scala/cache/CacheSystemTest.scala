@@ -323,42 +323,30 @@ class CacheSystemTest extends FlatSpec with ChiselScalatestTester with Matchers 
         L2CacheSystemTestParams()
     })
 
-<<<<<<< HEAD
-     test(LazyModule(new CacheSystemTestTopWrapper()).module)
-      .withAnnotations(annos){ c =>
-        //c.io.testVec
-        c.clock.step(10)
-        //TODO: Test Vector Generation
-        def gen_st_vec() = {
-          for(i <- 0 until nRegs){
-          }
-          
-        }
-
-        def gen_ld_vec() = {
-
-        }
-
-
-      }
+    test(LazyModule(new CacheSystemTestTopWrapper()).module).withAnnotations(annos){ c =>
+      c.clock.step(10)
+      //TODO: Test Vector Generation
+      //c.io.testVec <> DontCare
+    }
   }
 }
 
-case class StReq(
-  addr: Long,
+case class Req(
+  addr: Int,
   wdata: BigInt,
-  stype: Int,
-  srcReg: Int,
-  offset: Int
+  src1Reg: Int,
+  src2Reg: Int,
+  destReg: Int
 ) {
   override def toString() : String = {
-    return f"addr: $addr%x wdata: $wdata%x sype: $stype%d srcReg: $srcReg%d offset: $offset%x"
+    return f"addr: $addr%x wdata: $wdata%x src1Reg: $src1Reg%d src2Reg: $src2Reg%d "
   }  
 }
 
 case class QueueEntry(
   var id: Int, // it's transaction id
-  req: StReq
+  var issued: Boolean,
+  req: Req
 ) {
   override def toString() : String = {
     return f"id: $id%d req: $req"
@@ -366,17 +354,16 @@ case class QueueEntry(
 }
 
 
-class CfStQueue(nEntries: Int, width: Int, name: String){
+class Queue(nEntries: Int, width: Int, name: String){
   val queue = new ArrayBuffer[QueueEntry]()
-  val IdPool = new IdPool(nEntries)
 
-  def enq(req: StReq) = {
-    queue += new QueueEntry(-1, req)
+  def enq(req: Req, id: Int) = {
+    queue += new QueueEntry(id, false, req)
   }
 
   def select(): Int = {
     for (i <- 0 until queue.size) {
-      if (queue(i).id == -1)
+      if (queue(i).issued == false)
         return i
     }
     return -1
@@ -394,82 +381,31 @@ class CfStQueue(nEntries: Int, width: Int, name: String){
     }
   }
 
-  def issue(idx: Int, tId: Int) = {
-    println(f"$name issue req: $idx%d transaction: $tId%d")
-    assert(queue(idx).id == -1)
-    queue(idx).id = tId
+  def issued(idx: Int, tId: Int) = {
+    //println(f"$name issue req: $idx%d transaction: $tId%d")
+    assert(queue(idx).issued == false)
+    queue(idx).issued = true
+    queue(idx).tID = tId
   }
 
-  def lookUp(tID: Int): Array[StReq] = {
-    for(i <- 0 util nEntries){
+  def lookUp(tID: Int): Req = {
+    for(i <- 0 util 
+    ){
       if(queue(i).id == tId) {
         return queue(i).req
       }
     }
-    return StReq(0,0,0,0,0)
+    return Req(0,0,0,0,0)
   }
 
   var reqWaiting = Array[Boolean](width)
   def init(): Unit = {
-    idPool.init()
     queue.clear()
-    reqWaiting = false    
+    for(i <- 0 until width){
+        reqWaiting(i) = false    
+    }
   }
 
   def isFinished() = queue.isEmpty
 
-  def sendOneSt(reqvec: CacheSystemTestIO): Int ={
-    val inputVec = reqvec.testVec
-
-    //if last req sent and allow to in
-    //reset the flag and valid
-    for(i <- 0 until width){
-      if(reqWaiting && input(i).ready.peek().litToBoolean){
-        reqWaiting(i) = false
-        input(i).valid.poke(false.B)
-      }
-    }
-
-    val reqIdx = select()
-    if(reqWaiting || reqIdx == -1){
-      println(s"req can not be sent!")
-      return -1
-    }
-
-    val tID = idPool.allocate()
-    if (tID == -1) {
-      println(s"no trasaction id availabe")
-      return -1
-    }
-
-    val inputGateNum = tID % width
-    val input = inputVec(inputGateNum)
-
-    reqWaiting = true
-
-    issue(reqIdx,tID)
-
-    val r = queue(reqIdx).req
-    input.valid.poke(true.B)
-    input.bits.cf.pc.poke(tID.U)
-    input.bits.ctrl.src1Type.poke(SrcType.reg)
-    input.bits.ctrl.src2Type.poke(SrcType.reg)
-    input.bits.ctrl.lsrc1.poke(r.srcReg.U)
-    input.bits.ctrl.lsrc2.poke(r.addr.U)
-    input.bits.ctrl.fuType.poke(FuType.stu)
-    input.bits.ctrl.fuOpType.poke(LSUOpType.sd)
-    input.bits.ctrl.imm.poke(r.offset.U)
-
-    return tID 
-  }
-
-
-=======
-    test(LazyModule(new CacheSystemTestTopWrapper()).module).withAnnotations(annos){ c =>
-      c.clock.step(10)
-      //TODO: Test Vector Generation
-      //c.io.testVec <> DontCare
-    }
-  }
->>>>>>> c393640b27e45ccace1a69018ad58ddff7834b89
 }
