@@ -8,6 +8,13 @@ import xiangshan.cache._
 import utils._
 import scala.math.max
 
+import chipsalliance.rocketchip.config.Parameters
+import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp, IdRange}
+import freechips.rocketchip.tilelink.{TLClientNode, TLClientParameters,
+  TLMasterParameters, TLMasterPortParameters, TLArbiter,
+  TLEdgeOut, TLBundleA, TLBundleD,
+  ClientStates, ClientMetadata, TLHints
+}
 
 trait HasPrefetcherParameters extends HasXSParameter with MemoryOpConstants {
   val pcfg = l1plusPrefetcherParameters
@@ -136,4 +143,54 @@ class L1IplusPrefetcher(enable: Boolean) extends PrefetcherModule {
   io.prefetch.resp.ready := prefetcher.io.prefetch.resp.ready
 
   prefetcher.io.prefetch.finish.ready := true.B
+}
+
+class L2Prefetcher()(implicit p: Parameters) extends LazyModule with HasPrefetcherParameters {
+  
+  val clientParameters = TLMasterPortParameters.v1(
+    Seq(TLMasterParameters.v1(
+      name = "l2Prefetcher",
+      sourceId = IdRange(0, prefetchEntries) // prefetchEntries = 8
+    ))
+  )
+
+  val clientNode = TLClientNode(Seq(clientParameters))
+
+  lazy val module = new L2PrefetcherImp(this)
+
+}
+
+class L2PrefetcherImp(outer: L2Prefetcher) extends LazyModule(outer) with HasPrefetcherParameters with HasXSLog {
+
+  val (bus, edge) = outer.clientNode.out.head
+
+  val mem_intent = Wire(DecoupledIO(new TLBundleA(edge.bundle)))
+  val mem_hintack = Wire(DecoupledIO(new TLBundleD(edge.bundle)))
+
+  val prefetcher = Module(new BestOffsetPrefetcher)
+  mem_intent.valid := prefetcher.io.prefetch.req.valid
+  mem_intent.bits := DontCare
+  mem_intent.bits := edge.Hint(
+    fromSource = prefetcher.io.prefetch.req.bits.id,
+    toAddress = prefetcher.io.prefetch.req.bits.addr,
+    lgSize = log2Up(64).U, // TODO: parameterize this!!!
+    param = TLHints.PREFETCH_WRITE // TODO: decide this according to cmd
+  )
+  prefetcher.io.prefetch.req.ready := mem_intent.ready
+
+  prefetcher.io.prefetch.resp.valid := mem_hintack.valid
+  prefetcher.io.prefetch.resp.bits.id := mem_hintack.bits.source
+  mem_hintack.ready := prefetcher.io.prefetch.resp.ready
+
+  prefetcher.io.prefetch.finish.ready := true.B
+
+  bus.a <> mem_intent
+  mem_hintack <> bus.d
+  bus.b.ready := false.B
+  bus.c.valid := false.B
+  bus.c.bits := DontCare
+  bus.e.valid := false.B
+  bus.e.bits := DontCare
+
+
 }
