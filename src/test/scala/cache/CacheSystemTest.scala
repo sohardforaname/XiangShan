@@ -325,8 +325,116 @@ class CacheSystemTest extends FlatSpec with ChiselScalatestTester with Matchers 
 
     test(LazyModule(new CacheSystemTestTopWrapper()).module).withAnnotations(annos){ c =>
       c.clock.step(10)
-      //TODO: Test Vector Generation
-      //c.io.testVec <> DontCare
+        var fake_regfile = Array[Int](regNum)
+        var golden_trace = Array[(Int,Int)](testEntries)
+
+        // addr data tempReg
+        // the idx of trace vector is the trasaction ID
+        c.reset.poke(true.B)
+        c.clock.step(100)
+        c.reset.poke(false.B)
+
+        val sq = new StoreQueue(testEntries,testWidth)
+        val lq = new LoadQueue(testEntries,testWidth)
+
+        var sqPtr = 0
+        var lqPtr = 0
+
+        def gen_array(){
+            for(i <- 0 until regNum){
+                val addr = Int(r.nextInt() & 0x2fffffffL)
+                fake_regfile(i) = addr
+                println(f"fake_rf_$i%d: $addr%x")
+            }
+        }
+
+        def sendOneLi(ldest:Int, addr:Int, cf: CfCtrl){
+          cf.ctrl.src1Type.poke(SrcType.reg)
+          cf.ctrl.src2Type.poke(SrcType.imm)
+          cf.ctrl.lsrc1.poke(0.U)
+          cf.ctrl.ldest.poke(ldest.U)
+          cf.ctrl.fuType.poke(FuType.alu)
+          cf.ctrl.fuOpType.poke(ALUOpType.add)
+          cf.ctrl.rfWen.poke(true.B)
+          cf.ctrl.imm.poke(addr.U)
+        }
+
+        def set_lreg_file(){
+          val inputVec = c.io.testVec
+          var reqWaiting = false
+          var literation = 32
+          var entryPointer = 0
+
+          while(literation > 0){
+            var issueNum = 0
+            for(i <- 0 until testWidth){
+              if(inputVec(i).ready.peek().litToBoolean){
+                inputVec(i).valid.poke(true.B)
+                sendOneLi(entryPointer,fake_regfile(entryPointer),inputVec(i).bits)
+                issueNum++
+                entryPointer++
+              }
+            }
+            literation = literation - issueNum
+            c.clock.step(1)
+          }    
+
+          //wait for 100 cycles to finish li instruction
+          c.clock.step(100)  
+        }
+
+        def tick(){
+          for(i <- 0 until testWidth){
+            val rand = r.nextInt(10)
+            val isSt = rand % 2 == 0
+            if((!isSt && sqPtr > lqPtr) || sq.isFinished && !lq.isFinished){
+              lq.sendOneReq(c.io)
+              lqPtr++
+            }
+            else{
+              sq.sendOneReq(c.io)
+              sqPtr++
+            }           
+          }       
+           sq.handleResp(port = c.io)
+           lq.handleResp(port = c.io, trace = golden_trace)
+        }
+
+        /* -----------------------
+         * 
+         * Test Cache System
+         *
+         * -----------------------
+         */
+
+        val inputVec = c.io.testVec
+        val outputVec = c.io.retiredVec
+
+        sq.init()
+        lq.init()
+
+
+        gen_array()
+
+        for(i <- 0 until testEntries){
+          val dataReg  = r.nextInt(regNum)
+          val addrReg  = r.nextInt(regNum)
+          val addr = fake_regfile(addrReg)
+          val wdata = fake_regfile(dataReg)
+          golden_trace(i) = (addr,wdata)
+          val stReq = Req(addr=addr,wdata=wdata,src1Reg=addrReg,src2Reg=dataReg)
+          val ldReq = Req(addr=addr,wdata=wdata,src1Reg=addrReg,destReg=dataReg)   //write to data source so that regfile doesn't change
+          sq.enq(stReq,i)
+          lq.enq(ldReq,i)
+        }
+
+        set_lreg_file()
+        
+        while(!lq.isFinished){
+          tick()
+          c.io.step(1)
+        }
+
     }
   }
 }
