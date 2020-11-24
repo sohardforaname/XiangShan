@@ -197,7 +197,7 @@ class SbufferLRU(n_ways: Int) {
   def get_min_value(xs: Seq[(UInt,UInt)]): (UInt,UInt)= {
     xs match {
       case Seq(a) => a
-      case Seq(a, b) => (Mux(a._1<b._1,a._1,b._1),Mux(a._1<b._1,a._2,b._2))
+      case Seq(a, b) => (Mux(a._1<=b._1, a._1, b._1),Mux(a._1<=b._1, a._2, b._2))
       case _ =>
         get_min_value(Seq(get_min_value(xs take xs.size/2), get_min_value(xs drop xs.size/2)))
     }
