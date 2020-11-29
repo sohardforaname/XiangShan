@@ -27,7 +27,8 @@ case class L1plusCacheParameters
     tagECC: Option[String] = None,
     dataECC: Option[String] = None,
     nMissEntries: Int = 1,
-    blockBytes: Int = 64
+    blockBytes: Int = 64,
+    nClients: Int = 1
 ) extends L1CacheParameters {
 
   def tagCode: Code = Code.fromString(tagECC)
@@ -41,11 +42,20 @@ trait HasL1plusCacheParameters extends HasL1CacheParameters {
   val icacheParams = icacheParameters
   val cfg = cacheParams
   val icfg = icacheParams
+  val pcfg = l1plusPrefetcherParameters
 
   def encRowBits = cacheParams.dataCode.width(rowBits)
 
   def missQueueEntryIdWidth = log2Up(cfg.nMissEntries)
   def icachemisQueueEntryIdWidth = log2Up(icfg.nMissEntries)
+  def prefetcherEntryIdWidth = log2Up(pcfg.streamCnt*pcfg.streamSize)
+  def clientIdWidth = log2Up(cfg.nClients) // l1i miss queue and l1+ prefetcher
+  def entryIdWidth = max(icachemisQueueEntryIdWidth, prefetcherEntryIdWidth)
+  def idWidth = clientIdWidth + entryIdWidth
+  def clientIdMSB = idWidth - 1
+  def clientIdLSB = entryIdWidth
+  def entryIdMSB = entryIdWidth - 1
+  def entryIdLSB = 0
 
   require(isPow2(nSets), s"nSets($nSets) must be pow2")
   require(isPow2(nWays), s"nWays($nWays) must be pow2")
@@ -259,13 +269,16 @@ class L1plusCacheReq extends L1plusCacheBundle
 {
   val cmd  = UInt(M_SZ.W)
   val addr = UInt(PAddrBits.W)
-  val id   = UInt(icachemisQueueEntryIdWidth.W)
+  val id   = UInt(idWidth.W)
 }
 
 class L1plusCacheResp extends L1plusCacheBundle
 {
   val data = UInt((cfg.blockBytes * 8).W)
-  val id   = UInt(icachemisQueueEntryIdWidth.W)
+  val id   = UInt(idWidth.W)
+  
+  def clientId = id(clientIdMSB, clientIdLSB)
+  def entryId = id(entryIdMSB, entryIdLSB)
 }
 
 class L1plusCacheIO extends L1plusCacheBundle
@@ -546,7 +559,7 @@ class L1plusCachePipe extends L1plusCacheModule
 class L1plusCacheMissReq extends L1plusCacheBundle
 {
   // transaction id
-  val id     = UInt(missQueueEntryIdWidth.W)
+  val id     = UInt(idWidth.W)
   val cmd    = UInt(M_SZ.W)
   val addr   = UInt(PAddrBits.W)
   val way_en = UInt(nWays.W)

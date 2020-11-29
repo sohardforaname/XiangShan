@@ -10,7 +10,8 @@ import xiangshan.backend.exu.Exu._
 import xiangshan.frontend._
 import xiangshan.mem._
 import xiangshan.backend.fu.HasExceptionNO
-import xiangshan.cache.{ICache, DCache, L1plusCache, DCachePrefetcher, DCacheParameters, DCachePrefetcherParameters, ICacheParameters, L1plusCacheParameters, PTW, Uncache}
+import xiangshan.cache.{ICache, DCache, L1plusCache, DCacheParameters, ICacheParameters, L1plusCacheParameters, PTW, Uncache, L1plusCacheReq, DCachePrefetcher, DCachePrefetcherParameters}
+import xiangshan.cache.prefetcher.{L1plusPrefetcherParameters, L1IplusPrefetcher, L2PrefetcherParameters}
 import chipsalliance.rocketchip.config
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp, AddressSet}
 import freechips.rocketchip.tilelink.{TLBundleParameters, TLCacheCork, TLBuffer, TLClientNode, TLIdentityNode, TLXbar, TLWidthWidget, TLFilter, TLToAXI4}
@@ -18,6 +19,7 @@ import freechips.rocketchip.devices.tilelink.{TLError, DevNullParams}
 import sifive.blocks.inclusivecache.{CacheParameters, InclusiveCache, InclusiveCacheMicroParameters}
 import freechips.rocketchip.amba.axi4.{AXI4ToTL, AXI4IdentityNode, AXI4UserYanker, AXI4Fragmenter, AXI4IdIndexer, AXI4Deinterleaver}
 import utils._
+import scala.math.max
 
 case class XSCoreParameters
 (
@@ -33,6 +35,8 @@ case class XSCoreParameters
   PAddrBits: Int = 40,
   HasFPU: Boolean = true,
   FectchWidth: Int = 8,
+  EnableIPrefetcher: Boolean = true,
+  EnableL2Prefetcher: Boolean = true,
   EnableBPU: Boolean = true,
   EnableBPD: Boolean = true,
   EnableRAS: Boolean = true,
@@ -116,6 +120,8 @@ trait HasXSParameter {
   val HasFPU = core.HasFPU
   val FetchWidth = core.FectchWidth
   val PredictWidth = FetchWidth * 2
+  val EnableIPrefetcher = core.EnableIPrefetcher
+  val EnableL2Prefetcher = core.EnableL2Prefetcher
   val EnableBPU = core.EnableBPU
   val EnableBPD = core.EnableBPD // enable backing predictor(like Tage) in BPUStage3
   val EnableRAS = core.EnableRAS
@@ -167,13 +173,21 @@ trait HasXSParameter {
   val NumPerfCounters = core.NumPerfCounters
 
   val icacheParameters = ICacheParameters(
-    nMissEntries = 2
+    nMissEntries = 2,
+    id = 0
   )
 
   val l1plusCacheParameters = L1plusCacheParameters(
     tagECC = Some("secded"),
     dataECC = Some("secded"),
-    nMissEntries = 8
+    nMissEntries = 8,
+    nClients = 1 + (if (EnableIPrefetcher) 1 else 0)
+  )
+
+  val l1plusPrefetcherParameters = L1plusPrefetcherParameters(
+    streamCnt = 4,
+    streamSize = 4,
+    id = 1
   )
 
   val dcacheParameters = DCacheParameters(
@@ -185,7 +199,11 @@ trait HasXSParameter {
   )
 
   val dcachePrefetcherParameters = DCachePrefetcherParameters(
+    // TODO
     nMaxPrefetchRequests = 8
+  )
+  val l2PrefetcherParameters = L2PrefetcherParameters(
+    // TODO
   )
 
   val LRSCCycles = 100
@@ -358,6 +376,7 @@ class XSCoreImp(outer: XSCore) extends LazyModuleImp(outer)
   val l1pluscache = outer.l1pluscache.module
   val ptw = outer.ptw.module
   val icache = Module(new ICache)
+  val l1plusprefetcher = Module(new L1IplusPrefetcher(enable = EnableIPrefetcher))
 
   frontend.io.backend <> ctrlBlock.io.frontend
   frontend.io.icacheResp <> icache.io.resp
@@ -367,8 +386,20 @@ class XSCoreImp(outer: XSCore) extends LazyModuleImp(outer)
   frontend.io.sfence <> integerBlock.io.fenceio.sfence
   frontend.io.tlbCsr <> integerBlock.io.csrio.tlb
 
-  icache.io.mem_acquire <> l1pluscache.io.req
-  l1pluscache.io.resp <> icache.io.mem_grant
+  l1plusprefetcher.io.in <> icache.io.prefetch
+  val l1plusReqArb = Module(new Arbiter(new L1plusCacheReq, 2))
+  l1plusReqArb.io.in(0) <> icache.io.mem_acquire
+  l1plusReqArb.io.in(1) <> l1plusprefetcher.io.prefetch.req
+  l1pluscache.io.req <> l1plusReqArb.io.out
+  
+  icache.io.mem_grant.valid := l1pluscache.io.resp.valid && l1pluscache.io.resp.bits.clientId === icacheParameters.id.U
+  icache.io.mem_grant.bits := l1pluscache.io.resp.bits
+  l1plusprefetcher.io.prefetch.resp.valid := l1pluscache.io.resp.valid && l1pluscache.io.resp.bits.clientId === l1plusPrefetcherParameters.id.U
+  l1plusprefetcher.io.prefetch.resp.bits := l1pluscache.io.resp.bits
+  l1pluscache.io.resp.ready := Mux(l1pluscache.io.resp.bits.clientId === icacheParameters.id.U,
+    icache.io.mem_grant.ready,
+    l1plusprefetcher.io.prefetch.resp.ready)
+
   l1pluscache.io.flush := icache.io.l1plusflush
   icache.io.fencei := integerBlock.io.fenceio.fencei
 
