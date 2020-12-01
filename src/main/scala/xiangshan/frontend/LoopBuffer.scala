@@ -10,6 +10,8 @@ class LoopBufferParameters extends XSBundle {
   val LBredirect = ValidIO(UInt(VAddrBits.W))
   val fetchReq = Input(UInt(VAddrBits.W))
   val noTakenMask = Input(UInt(PredictWidth.W))
+  val loopStartPC = Output(UInt(VAddrBits.W))
+  val loopEndPC = Output(UInt(VAddrBits.W))
 }
 
 class LoopBufferIO extends XSBundle {
@@ -37,7 +39,7 @@ class LoopBuffer extends XSModule {
   val LBstate = RegInit(s_idle)
 
   io.out <> DontCare
-  io.out.valid := LBstate === s_active
+  // io.out.valid := LBstate === s_active && !(brTaken && !tsbbTaken)
   io.in.ready := true.B
 
   class LBufEntry extends XSBundle {
@@ -87,6 +89,13 @@ class LoopBuffer extends XSModule {
   val bufferValid = RegInit(VecInit(Seq.fill(IBufSize*2)(false.B)))
 
   val redirect_pc = io.in.bits.pnpc(PredictWidth.U - PriorityEncoder(Reverse(io.in.bits.mask)) - 1.U)
+
+  val loopStartPC = Reg(UInt(VAddrBits.W))
+  val loopEndPC = Reg(UInt(VAddrBits.W))
+  io.loopBufPar.loopStartPC := loopStartPC
+  io.loopBufPar.loopEndPC   := loopEndPC
+
+  io.out.valid := LBstate === s_active && !(brTaken && !tsbbTaken)
 
   def flush() = {
     XSDebug("Loop Buffer Flushed.\n")
@@ -152,6 +161,12 @@ class LoopBuffer extends XSModule {
           when(hasTsbb && tsbbTaken) {
             LBstate := s_active
             XSDebug("State change: ACTIVE\n")
+
+            loopStartPC := tsbbPC - sbboffset(io.in.bits.instrs(tsbbIdx))._1
+            loopEndPC := tsbbPC
+
+            XSDebug(p"loopStartPC = ${Hexadecimal(tsbbPC - sbboffset(io.in.bits.instrs(tsbbIdx))._1)}\n")
+            XSDebug(p"loopEndPC = ${Hexadecimal(tsbbPC)}\n")
           }.otherwise {
             LBstate := s_idle
             XSDebug("State change: IDLE\n")
@@ -178,23 +193,23 @@ class LoopBuffer extends XSModule {
           flush()
         }
 
-        when(brTaken && !tsbbTaken) {
+        when(brTaken && !tsbbTaken && !(redirect_pc >= loopStartPC && redirect_pc <= loopEndPC)) {
           XSDebug("cof by other inst, State change: IDLE\n")
           LBstate := s_idle
-          io.loopBufPar.LBredirect.valid := true.B
-          io.loopBufPar.LBredirect.bits := redirect_pc
-          XSDebug(p"redirect pc=${Hexadecimal(redirect_pc)}\n")
+          // io.loopBufPar.LBredirect.valid := true.B
+          // io.loopBufPar.LBredirect.bits := redirect_pc
+          // XSDebug(p"redirect pc=${Hexadecimal(redirect_pc)}\n")
           flush()
         }
 
-        when(hasTsbb && brTaken && !tsbbTaken) {
-          XSDebug("tsbb and cof, State change: IDLE\n")
-          LBstate := s_idle
-          io.loopBufPar.LBredirect.valid := true.B
-          io.loopBufPar.LBredirect.bits := redirect_pc
-          XSDebug(p"redirect pc=${Hexadecimal(redirect_pc)}\n")
-          flush()
-        }
+        // when(hasTsbb && brTaken && !tsbbTaken) {
+        //   XSDebug("tsbb and cof, State change: IDLE\n")
+        //   LBstate := s_idle
+        //   io.loopBufPar.LBredirect.valid := true.B
+        //   io.loopBufPar.LBredirect.bits := redirect_pc
+        //   XSDebug(p"redirect pc=${Hexadecimal(redirect_pc)}\n")
+        //   flush()
+        // }
       }
     }
   }
@@ -203,11 +218,10 @@ class LoopBuffer extends XSModule {
     flush()
   }
 
-  // XSDebug(io.flush, "LoopBuffer Flushed\n")
+  XSDebug(io.flush, "LoopBuffer Flushed\n")
   // if (!env.FPGAPlatform ) {
   //   ExcitingUtils.addSource(LBstate === s_active && hasTsbb && !tsbbTaken, "CntExitLoop1", Perf)
   //   ExcitingUtils.addSource(LBstate === s_active && brTaken && !tsbbTaken, "CntExitLoop2", Perf)
-  //   ExcitingUtils.addSource(LBstate === s_active && hasTsbb && brTaken && !tsbbTaken, "CntExitLoop3", Perf)
   // }
 
   XSDebug(LBstate === s_idle, "Current state: IDLE\n")
