@@ -366,7 +366,7 @@ class NewSbuffer extends XSModule with HasSbufferCst {
     forward.forwardMask := forwardResult.forwardMask
     forward.forwardData := forwardResult.forwardData
 
-    lruAccessWays(io.in.getWidth + i).valid := true.B
+    lruAccessWays(io.in.getWidth + i).valid := forward.valid
     lruAccessWays(io.in.getWidth + i).bits := valid_forward_idx
 
     XSDebug(inflight_tag_match, 
