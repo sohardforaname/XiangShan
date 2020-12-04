@@ -18,6 +18,9 @@ trait HasPdconst{ this: XSModule =>
     val isRet = brType === BrType.jalr && isLink(rs) && !isCall
     List(brType, isCall, isRet)
   }
+  def getRd(instr: UInt) = instr(11,7) //TODO: add RVC
+  def getRs1(instr: UInt) = instr(19,15)
+
 }
 
 object BrType {
@@ -26,6 +29,11 @@ object BrType {
   def jal     = "b10".U
   def jalr    = "b11".U
   def apply() = UInt(2.W)
+}
+
+object SfbConst {
+  def T = true.B
+  def F = false.B
 }
 
 object ExcType {  //TODO:add exctype
@@ -45,11 +53,14 @@ class PreDecodeInfo extends XSBundle {  // 8 bit
   def notCFI = brType === BrType.notBr
 }
 
+
 class PreDecodeResp extends XSBundle {
   val instrs = Vec(PredictWidth, UInt(32.W))
   val pc = Vec(PredictWidth, UInt(VAddrBits.W))
   val mask = UInt(PredictWidth.W)
   val pd = Vec(PredictWidth, (new PreDecodeInfo))
+  val shadowableVec = Vec(PredictWidth,Bool())
+  val sfbEnable = Bool()
 }
 
 class PreDecode extends XSModule with HasPdconst{
@@ -69,6 +80,8 @@ class PreDecode extends XSModule with HasPdconst{
   // val nextHalf = Wire(UInt(16.W))
 
   val lastHalfInstrIdx = PopCount(mask) - 1.U
+    
+  val sfbVec = WireInit(VecInit(0.U(PredictWidth.W).asBools))
 
   for (i <- 0 until PredictWidth) {
     val inst = Wire(UInt(32.W))
@@ -103,9 +116,21 @@ class PreDecode extends XSModule with HasPdconst{
     io.out.pd(i).excType := ExcType.notExc
     io.out.instrs(i) := insts(i)
     io.out.pc(i) := instsPC(i)
+
+    //for sfb
+    val branchOffset = Cat(inst(7), inst(30,25), inst(11,8), 0.U(1.W))
+    val shadowable::has_rs2::Nil = ListLookup(inst,List(SfbConst.F, SfbConst.F),PreDecodeInst.sfbTable)
+    
+    sfbVec(i) := (brType === BrType.branch) && !inst(31) && branchOffset =/= 0.U && (branchOffset >> log2Ceil(PredictWidth * 2)) === 0.U   //TODO: better parameterizing
+    io.out.shadowableVec(i) := instsMask(i) && shadowable && (
+      !has_rs2 ||
+      getRs1(inst) === getRd(inst) ||
+      (inst === PreDecodeInst.ADD) && getRs1(inst) === 0.U
+    )
     
   }
   io.out.mask := instsMask.asUInt
+  io.out.sfbEnable := sfbVec.asUInt.orR
 
   for (i <- 0 until PredictWidth) {
     XSDebug(true.B,

@@ -1,13 +1,12 @@
 package xiangshan.backend.decode.isa.predecode
 
+import chisel3._
 import chisel3.util._
 import xiangshan.frontend.BrType
+import xiangshan.frontend.SfbConst
+import xiangshan.HasXSParameter
 
-object PreDecodeInst {
-  // def const
-  def T = true.B
-  def F = false.B
-
+object PreDecodeInst extends HasXSParameter{
   // def C_JAL     = BitPat("b????????????????_?01_?_??_???_??_???_01") // RV32C
   def C_J       = BitPat("b????????????????_101_?_??_???_??_???_01")
   def C_JALR    = BitPat("b????????????????_100_?_??_???_00_000_10")  //c.jalr & c.jr
@@ -72,39 +71,39 @@ object PreDecodeInst {
 ///                       |   has_rs2
 ///                       |   |
 ///                       |   |
-      SLLI        -> List(Y, N),
-      SRLI        -> List(Y, N),
-      SRAI        -> List(Y, N),
+      SLLI        -> List(SfbConst.T, SfbConst.F),
+      SRLI        -> List(SfbConst.T, SfbConst.F),
+      SRAI        -> List(SfbConst.T, SfbConst.F),
 
-      ADDIW       -> List(Y, N),
-      SLLIW       -> List(Y, N),
-      SRAIW       -> List(Y, N),
-      SRLIW       -> List(Y, N),
+      ADDIW       -> List(SfbConst.T, SfbConst.F),
+      SLLIW       -> List(SfbConst.T, SfbConst.F),
+      SRAIW       -> List(SfbConst.T, SfbConst.F),
+      SRLIW       -> List(SfbConst.T, SfbConst.F),
 
-      ADDW        -> List(Y, Y),
-      SUBW        -> List(Y, Y),
-      SLLW        -> List(Y, Y),
-      SRAW        -> List(Y, Y),
-      SRLW        -> List(Y, Y),
+      ADDW        -> List(SfbConst.T, SfbConst.T),
+      SUBW        -> List(SfbConst.T, SfbConst.T),
+      SLLW        -> List(SfbConst.T, SfbConst.T),
+      SRAW        -> List(SfbConst.T, SfbConst.T),
+      SRLW        -> List(SfbConst.T, SfbConst.T),
 
-      LUI         -> List(Y, N),
+      LUI         -> List(SfbConst.T, SfbConst.F),
 
-      ADDI        -> List(Y, N),
-      ANDI        -> List(Y, N),
-      ORI         -> List(Y, N),
-      XORI        -> List(Y, N),
-      SLTI        -> List(Y, N),
-      SLTIU       -> List(Y, N),
+      ADDI        -> List(SfbConst.T, SfbConst.F),
+      ANDI        -> List(SfbConst.T, SfbConst.F),
+      ORI         -> List(SfbConst.T, SfbConst.F),
+      XORI        -> List(SfbConst.T, SfbConst.F),
+      SLTI        -> List(SfbConst.T, SfbConst.F),
+      SLTIU       -> List(SfbConst.T, SfbConst.F),
 
-      SLL         -> List(Y, Y),
-      ADD         -> List(Y, Y),
-      SUB         -> List(Y, Y),
-      SLT         -> List(Y, Y),
-      SLTU        -> List(Y, Y),
-      AND         -> List(Y, Y),
-      OR          -> List(Y, Y),
-      XOR         -> List(Y, Y),
-      SRA         -> List(Y, Y),
-      SRL         -> List(Y, Y)  
+      SLL         -> List(SfbConst.T, SfbConst.T),
+      ADD         -> List(SfbConst.T, SfbConst.T),
+      SUB         -> List(SfbConst.T, SfbConst.T),
+      SLT         -> List(SfbConst.T, SfbConst.T),
+      SLTU        -> List(SfbConst.T, SfbConst.T),
+      AND         -> List(SfbConst.T, SfbConst.T),
+      OR          -> List(SfbConst.T, SfbConst.T),
+      XOR         -> List(SfbConst.T, SfbConst.T),
+      SRA         -> List(SfbConst.T, SfbConst.T),
+      SRL         -> List(SfbConst.T, SfbConst.T)  
   )
 }
