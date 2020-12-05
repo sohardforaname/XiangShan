@@ -4,8 +4,8 @@ import chisel3._
 import chisel3.util._
 import utils.XSDebug
 import xiangshan._
-import xiangshan.backend.decode.isa.predecode.PreDecodeInst
 import xiangshan.cache._
+import xiangshan.backend.decode.isa.predecode.PreDecodeInst
 
 trait HasPdconst{ this: XSModule =>
   def isRVC(inst: UInt) = (inst(1,0) =/= 3.U)
@@ -41,6 +41,22 @@ object ExcType {  //TODO:add exctype
   def apply() = UInt(3.W)
 }
 
+object MaskLower
+{
+  def apply(in: UInt) = {
+    val n = in.getWidth
+    (0 until n).map(i => in >> i.U).reduce(_|_)
+  }
+}
+
+object MaskUpper
+{
+  def apply(in: UInt) = {
+    val n = in.getWidth
+    (0 until n).map(i => (in << i.U)(n-1,0)).reduce(_|_)
+  }
+}
+
 class PreDecodeInfo extends XSBundle {  // 8 bit
   val isRVC   = Bool()
   val brType  = UInt(2.W)
@@ -59,8 +75,9 @@ class PreDecodeResp extends XSBundle {
   val pc = Vec(PredictWidth, UInt(VAddrBits.W))
   val mask = UInt(PredictWidth.W)
   val pd = Vec(PredictWidth, (new PreDecodeInfo))
-  val shadowableVec = Vec(PredictWidth,Bool())
-  val sfbEnable = Bool()
+  val sfbVec = Vec(PredictWidth, Bool())
+  val shadowableVec = Vec(PredictWidth, Bool())
+  val rangeMask =  Vec(PredictWidth, UInt(PredictWidth.W))
 }
 
 class PreDecode extends XSModule with HasPdconst{
@@ -80,8 +97,6 @@ class PreDecode extends XSModule with HasPdconst{
   // val nextHalf = Wire(UInt(16.W))
 
   val lastHalfInstrIdx = PopCount(mask) - 1.U
-    
-  val sfbVec = WireInit(VecInit(0.U(PredictWidth.W).asBools))
 
   for (i <- 0 until PredictWidth) {
     val inst = Wire(UInt(32.W))
@@ -118,19 +133,28 @@ class PreDecode extends XSModule with HasPdconst{
     io.out.pc(i) := instsPC(i)
 
     //for sfb
+
     val branchOffset = Cat(inst(7), inst(30,25), inst(11,8), 0.U(1.W))
+    val offsetIdx = branchOffset(log2Ceil(PredictWidth),1)
+    val isBr = (brType === BrType.branch)
+    val isInBound = Mux(isBr, (offsetIdx < (PredictWidth - i).U),false.B) //TODO: FIX ME!!!
     val shadowable::has_rs2::Nil = ListLookup(inst,List(SfbConst.F, SfbConst.F),PreDecodeInst.sfbTable)
-    
-    sfbVec(i) := (brType === BrType.branch) && !inst(31) && branchOffset =/= 0.U && (branchOffset >> log2Ceil(PredictWidth * 2)) === 0.U   //TODO: better parameterizing
+
+    val sfbOH = Wire(UInt(PredictWidth.W))
+    val tgtOH = Wire(UInt(PredictWidth.W))
+    sfbOH  := UIntToOH(i.U)
+    tgtOH  := UIntToOH((i.U + offsetIdx)(log2Ceil(PredictWidth)-1,0)) 
+
+    io.out.rangeMask(i) := ~MaskLower(sfbOH) & ~MaskUpper(tgtOH)
+    io.out.sfbVec(i) := isBr && !inst(31) && branchOffset =/= 0.U && isInBound && instsMask(i)  //TODO: better parameterizing
     io.out.shadowableVec(i) := instsMask(i) && shadowable && (
-      !has_rs2 ||
-      getRs1(inst) === getRd(inst) ||
-      (inst === PreDecodeInst.ADD) && getRs1(inst) === 0.U
+          !has_rs2 ||
+          getRs1(inst) === getRd(inst) ||
+          (inst === PreDecodeInst.ADD) && getRs1(inst) === 0.U
     )
     
   }
   io.out.mask := instsMask.asUInt
-  io.out.sfbEnable := sfbVec.asUInt.orR
 
   for (i <- 0 until PredictWidth) {
     XSDebug(true.B,
@@ -144,3 +168,4 @@ class PreDecode extends XSModule with HasPdconst{
     )
   }
 }
+     
