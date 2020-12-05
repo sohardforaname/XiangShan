@@ -368,12 +368,12 @@ class IFU extends XSModule with HasIFUConst
   })    
 
   //this fetch packet has sfb
-  val if4_sbf_enable = if4_sfb_vec.reduce(_||_)      
+  val if4_sfb_enable = if4_sfb_vec.reduce(_||_)      
   //sfb index inthe fetch packet (0-15)       
   val if4_sfb_idx    = PriorityEncoder(if4_sfb_vec)  
   //sfb range mask
   //e.g:   if 2 is sfb and the target is 7
-  //       the mask is:    0000_0000_0111_1100
+  //       the mask is:    0000_0000_0111_1000
   val if4_sfb_mask   = pd_range_mask(if4_sfb_idx)                           
   
 
@@ -478,6 +478,10 @@ class IFU extends XSModule with HasIFUConst
   io.fetchPacket.valid := fetchPacketValid
   loopBuffer.io.in.valid := io.fetchPacket.fire
 
+  if(EnableSFB && !env.FPGAPlatform){
+    ExcitingUtils.addSource( if4_sfb_enable, "shortFowardBranchValid", Perf)
+  }
+
   // debug info
   if (IFUDebug) {
     XSDebug(RegNext(reset.asBool) && !reset.asBool, "Reseting...\n")
@@ -508,7 +512,8 @@ class IFU extends XSModule with HasIFUConst
     XSDebug("[IF3][if3_prevHalfInstr] v=%d taken=%d fetchpc=%x idx=%d pc=%x tgt=%x instr=%x ipf=%d\n\n",
       if3_prevHalfInstr.valid, if3_prevHalfInstr.taken, if3_prevHalfInstr.fetchpc, if3_prevHalfInstr.idx, if3_prevHalfInstr.pc, if3_prevHalfInstr.target, if3_prevHalfInstr.instr, if3_prevHalfInstr.ipf)
     if3_GHInfo.debug
-
+    XSDebug("[IF4][SFBDebug] shadowMask=%b\n", shadowMask.asUInt)
+    XSDebug("[IF4][SFB] enable=%b   idx=%d   mask=%b\n", if4_sfb_enable,if4_sfb_idx,if4_sfb_mask.asUInt)
     XSDebug("[IF4][predecode] mask=%b\n", if4_pd.mask)
     XSDebug("[IF4][bp] redirect=%d taken=%d jmpIdx=%d hasNTBrs=%d target=%x saveHalfRVI=%d\n", if4_bp.redirect, if4_bp.taken, if4_bp.jmpIdx, if4_bp.hasNotTakenBrs, if4_bp.target, if4_bp.saveHalfRVI)
     XSDebug(if4_pd.pd(if4_bp.jmpIdx).isJal && if4_bp.taken, "[IF4] cfi is jal!  instr=%x target=%x\n", if4_cfi_jal, if4_cfi_jal_tgt)
@@ -530,4 +535,5 @@ class IFU extends XSModule with HasIFUConst
       )
     }
   }
+
 }

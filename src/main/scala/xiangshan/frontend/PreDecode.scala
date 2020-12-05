@@ -167,5 +167,11 @@ class PreDecode extends XSModule with HasPdconst{
       p"isCall ${Binary(io.out.pd(i).isCall)}\n"
     )
   }
+
+  for (i <- 0 until PredictWidth) {
+    XSDebug("[SFB](%d) sfb_range_mask:%x   shadowableVec:%d   sfbVec:%d\n",i.U,io.out.rangeMask(i),io.out.shadowableVec(i),io.out.sfbVec(i))
+  }
+
 }
+
      

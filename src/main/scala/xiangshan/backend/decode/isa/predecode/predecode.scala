@@ -65,9 +65,9 @@ object PreDecodeInst{
 
   val sfbTable = Array(
 ///                       shadowable
-///                       |   has_rs2
-///                       |   |
-///                       |   |
+///                       |            has_rs2
+///                       |            |
+///                       |            |
       SLLI        -> List(SfbConst.T, SfbConst.F),
       SRLI        -> List(SfbConst.T, SfbConst.F),
       SRAI        -> List(SfbConst.T, SfbConst.F),
