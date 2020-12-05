@@ -344,6 +344,39 @@ class IFU extends XSModule with HasIFUConst
   io.icacheResp.ready := if4_ready
   io.icacheReq.bits.addr := if1_npc
 
+
+  //sfb process
+
+  val pd_sfb_vec = if4_pd.sfbVec
+  val pd_shadowable_vec = if4_pd.shadowableVec
+  val pd_range_mask = if4_pd.rangeMask
+  val shadowMask = VecInit((0 until PredictWidth).map{ i => ( !(if4_ipf ) &&   //exception
+                                                              (pd_shadowable_vec(i) || !if4_pd.mask(i))   //only valid but can not be shadowed instruction is 0
+                                                           )})
+
+  val sfb_pk_check = VecInit((0 until PredictWidth) map { i =>
+     shadowMask.asUInt |
+     ~pd_range_mask(i).asUInt
+  })
+
+  val if4_sfb_vec = VecInit((0 until PredictWidth).map{  i =>
+    EnableSFB.B && 
+    ((~sfb_pk_check(i) === 0.U) && 
+     pd_sfb_vec(i) &&
+     if4_valid
+    )
+  })    
+
+  //this fetch packet has sfb
+  val if4_sbf_enable = if4_sfb_vec.reduce(_||_)      
+  //sfb index inthe fetch packet (0-15)       
+  val if4_sfb_idx    = PriorityEncoder(if4_sfb_vec)  
+  //sfb range mask
+  //e.g:   if 2 is sfb and the target is 7
+  //       the mask is:    0000_0000_0111_1100
+  val if4_sfb_mask   = pd_range_mask(if4_sfb_idx)                           
+  
+
   // when(if4_bp.taken) {
   //   when(if4_bp.saveHalfRVI) {
   //     io.loopBufPar.LBReq := snpc(if4_pc)
