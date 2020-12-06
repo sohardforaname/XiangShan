@@ -4,8 +4,9 @@ import chisel3._
 import chisel3.util._
 import device.RAMHelper
 import xiangshan._
-import utils._
 import xiangshan.cache._
+import utils._
+import chisel3.ExcitingUtils._
 
 trait HasIFUConst { this: XSModule =>
   val resetVector = 0x80000000L//TODO: set reset vec
@@ -479,7 +480,7 @@ class IFU extends XSModule with HasIFUConst
   loopBuffer.io.in.valid := io.fetchPacket.fire
 
   if(EnableSFB && !env.FPGAPlatform){
-    ExcitingUtils.addSource( if4_sfb_enable, "shortFowardBranchValid", Perf)
+    ExcitingUtils.addSource( if4_sfb_enable.asBool && io.fetchPacket.fire(), "shortFowardBranchValid", Perf)
   }
 
   // debug info
