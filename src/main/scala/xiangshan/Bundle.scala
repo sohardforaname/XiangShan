@@ -131,6 +131,11 @@ class CtrlFlow extends XSBundle {
   val intrVec = Vec(12, Bool())
   val brUpdate = new BranchUpdateInfo
   val crossPageIPFFix = Bool()
+
+  //sfb signals
+  val is_sfb_br = Bool()
+  val is_sfb_shadow = Bool()
+
 }
 
 // Decode DecodeWidth insts at Decode Stage
@@ -149,12 +154,18 @@ class CtrlSignals extends XSBundle {
   val isRVF = Bool()
   val imm = UInt(XLEN.W)
   val commitType = CommitType()
+  
+  //sfb signals
+  val lrs1_is_ld = Bool()
 }
 
 class CfCtrl extends XSBundle {
   val cf = new CtrlFlow
   val ctrl = new CtrlSignals
   val brTag = new BrqPtr
+
+  def is_sfb_br     = cf.is_sfb_br     
+  def is_sfb_shadow = cf.is_sfb_shadow 
 }
 
 // Load / Store Index
@@ -174,6 +185,10 @@ class MicroOp extends CfCtrl with HasLSIdx {
   val src1State, src2State, src3State = SrcState()
   val roqIdx = new RoqPtr
   val diffTestDebugLrScValid = Bool()
+
+  //sfb signals
+  val ppredState = SrcState()
+  val ppred = UInt(log2Ceil(BrqSize).W)
 }
 
 class Redirect extends XSBundle {

@@ -56,6 +56,8 @@ package object backend {
     def bltu = "b010110".U
     def bgeu = "b010111".U
 
+    def mov  = "b001111".U
+
     def isBranch(func: UInt) = func(4)
     def getBranchType(func: UInt) = func(2, 1)
     def isBranchInvert(func: UInt) = func(0)

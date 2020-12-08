@@ -201,6 +201,20 @@ class Decoder extends XSModule with HasInstrType {
 
   io.out.ctrl.isRVF := instr(26, 25) === 0.U
 
+  //deal with SFB
+  io.out.ctrl.lrs1_is_ld = io.in.is_sfb_shadow
+
+  when(io.in.is_sfb_shadow && io.out.ctrl.src2Type === SrcType.imm){
+    io.out.ctrl.src2Type    := SrcType.reg
+    io.out.ctrl.lsrc2       := rfDest
+    io.out.ctrl.lrs1_is_ld  := false.B
+  }.elsewhen(io.in.is_sfb_shadow && fuOpType === ALUOpType.add && fuType === FuType.alu && rfSrc1 === 0.U){
+    io.out.ctrl.fuOpType := ALUOpType.mov
+    io.out.ctrl.lsrc1 := rfDest
+    io.out.ctrl.lrs1_is_ld  := true.B
+  }
+
+
 
   XSDebug("in:  instr=%x pc=%x excepVec=%b intrVec=%b crossPageIPFFix=%d\n",
     io.in.instr, io.in.pc, io.in.exceptionVec.asUInt, io.in.intrVec.asUInt, io.in.crossPageIPFFix)
