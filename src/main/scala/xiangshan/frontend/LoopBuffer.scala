@@ -4,259 +4,175 @@ import chisel3._
 import chisel3.util._
 import utils._
 import xiangshan._
-import xiangshan.cache._
 
-class LoopBufferParameters extends XSBundle {
-  val LBredirect = ValidIO(UInt(VAddrBits.W))
-  val fetchReq = Input(UInt(VAddrBits.W))
-  val noTakenMask = Input(UInt(PredictWidth.W))
-  val loopStartPC = Output(UInt(VAddrBits.W))
-  val loopEndPC = Output(UInt(VAddrBits.W))
+trait HasLBConst {
+  val maxBody = 64
+  val minIter = 30
+  val loopDetectorTableSize = 8
+  val signatureSize = 64
 }
 
-class LoopBufferIO extends XSBundle {
+class LDTPtr extends CircularQueuePtr(8) {}
+
+object LDTPtr {
+  def apply(f: Bool, v: UInt): LDTPtr = {
+    val ptr = Module(new LDTPtr)
+    ptr.flag := f
+    ptr.value := v
+    ptr
+  }
+}
+
+class LoopDetectorTableEntry extends HasXSParameter with HasLBConst {
+  val pc           = UInt(VAddrBits.W)
+  val bodySize     = UInt(log2Up(maxBody).W)
+  val signature    = UInt(signatureSize.W) // 需要吗？
+  val curBodySize  = UInt(log2Up(maxBody).W)
+  val iterNum      = UInt(log2Up(minIter).W)
+  val firstIterBit = Bool()
+}
+
+class LoopDetector extends HasLBConst {
+//  val table = Mem(loopDetectorTableSize, new LoopDetectorTableEntry)
+  val table = Reg(Vec(loopDetectorTableSize, new LoopDetectorTableEntry))
+  val valid = RegInit(VecInit(Seq.fill(loopDetectorTableSize)(false.B)))
+  val size  = RegInit(0.U(log2Up(loopDetectorTableSize).W))
+
+  val buffer     = Mem(maxBody, new CfCtrl)
+  val bufferSize = RegInit(0.U(log2Up(maxBody).W))
+  val bufferPtr  = RegInit(0.U(log2Up(maxBody).W))
+}
+
+class LDTFreeList extends HasLBConst {
+  val list = RegInit(VecInit((0 until loopDetectorTableSize).map(_.U)))
+  val head = LDTPtr(false.B, 0.U)
+  val tail = LDTPtr(false.B, 0.U)
+  val freeNum = RegInit(loopDetectorTableSize.U)
+}
+
+class LoopBufIO extends XSBundle {
   val flush = Input(Bool())
-  val in = Flipped(DecoupledIO(new FetchPacket))
-  val out = ValidIO(new ICacheResp)
-  val loopBufPar = new LoopBufferParameters
+  val in    = Vec(DecodeWidth, DecoupledIO(new CfCtrl))
+  val out   = Vec(DecodeWidth, DecoupledIO(new CfCtrl))
 }
 
-class FakeLoopBuffer extends XSModule {
-  val io = IO(new LoopBufferIO)
+class LoopBuffer extends XSModule with HasLBConst with HasCircularQueuePtrHelper{
+  val io = IO(new LoopBufIO())
 
-  io.out <> DontCare
-  io.out.valid := false.B
-  io.in.ready := false.B
-  io.loopBufPar <> DontCare
-  io.loopBufPar.LBredirect.valid := false.B
-}
+  def isBackwardBranch(inst: UInt):Bool = {
+    val isJal   = inst === BitPat("b1???????????????????_?????_1101111")
+    val isCon   = inst === BitPat("b1??????_?????_?????_???_?????_1100011")
+    val isC_Jal = inst === BitPat("b????????????????_001_1??????????_01")
+    val isC_Con = inst === BitPat("b????????????????_11?_1??_???_?????_01")
 
-class LoopBuffer extends XSModule {
-  val io = IO(new LoopBufferIO)
+    isJal || isCon || isC_Jal || isC_Con
+  }
+
+  val backwardBranchVec = io.in.map(i => i.fire && isBackwardBranch(i.bits.cf.instr))
+  val haveBackwardBranch = backwardBranchVec.reduce(_||_)
 
   // FSM state define
   val s_idle :: s_fill :: s_active :: Nil = Enum(3)
   val LBstate = RegInit(s_idle)
+  val loopEntry = Reg(UInt(log2Up(loopDetectorTableSize).W))
 
-  io.out <> DontCare
-  // io.out.valid := LBstate === s_active && !(brTaken && !tsbbTaken)
-  io.in.ready := true.B
+  val loopDetector = Module(new LoopDetector)
+  val freeList = new LDTFreeList
 
-  class LBufEntry extends XSBundle {
-    val inst = UInt(16.W)
-    // val tag = UInt(tagBits.W)
-  }
+  val instNum = io.in.map(_.fire).fold(0.U(log2Up(DecodeWidth).W))(_+_)
 
-  def sbboffset(inst: UInt) = {
-    val isJal = inst === BitPat("b1111_???????_111111111_?????_1101111")
-    val isCon = inst === BitPat("b1111???_?????_?????_???_????1_1100011")
-    val isRVCJal = inst === BitPat("b????????????????_001_1?111??????_01")
-    val isRVCCon = inst === BitPat("b????????????????_11?_1??_???_?????_01")
-
-    val rst = PriorityMux(Seq(
-      isJal    -> inst(27, 21),
-      isCon    -> Cat(inst(27,25), inst(11,8)),
-      isRVCJal -> Cat(inst(6), inst(7), inst(2), inst(11), inst(5,3)),
-      isRVCCon -> Cat(inst(6), inst(5), inst(2), inst(11,10), inst(4,3)),
-      true.B   -> 0.U(7.W)
-    ))
-
-    ((~rst).asUInt + 1.U, rst)
-  }
-
-  def isSBB(inst: UInt): Bool = {
-    val sbboffsetWire = WireInit(sbboffset(inst)._1)
-    sbboffsetWire > 0.U && sbboffsetWire <= 112.U // TODO < 56.U
-  }
-
-  // predTaken to OH
-  val predTakenVec = Mux(io.in.bits.predTaken, Reverse(PriorityEncoderOH(Reverse(io.in.bits.mask))), 0.U(PredictWidth.W))
-
-  // Loop detect register
-  val offsetCounter = Reg(UInt((log2Up(IBufSize)+2).W))
-  val tsbbPC = RegInit(0.U(VAddrBits.W))
-
-  val brTaken = Cat((0 until PredictWidth).map(i => io.in.fire && io.in.bits.mask(i) && predTakenVec(i))).orR()
-  val brIdx = OHToUInt(predTakenVec.asUInt)
-  val sbbTaken = brTaken && isSBB(io.in.bits.instrs(brIdx))
-
-  val tsbbVec = Cat((0 until PredictWidth).map(i => io.in.fire && io.in.bits.mask(i) && io.in.bits.pc(i) === tsbbPC))
-  val hasTsbb = tsbbVec.orR()
-  val tsbbIdx = OHToUInt(Reverse(tsbbVec))
-  val tsbbTaken = brTaken && io.in.bits.pc(brIdx) === tsbbPC
-
-  val buffer = Mem(IBufSize*2, new LBufEntry)
-  val bufferValid = RegInit(VecInit(Seq.fill(IBufSize*2)(false.B)))
-
-  val redirect_pc = io.in.bits.pnpc(PredictWidth.U - PriorityEncoder(Reverse(io.in.bits.mask)) - 1.U)
-
-  val loopStartPC = Reg(UInt(VAddrBits.W))
-  val loopEndPC = Reg(UInt(VAddrBits.W))
-  io.loopBufPar.loopStartPC := loopStartPC
-  io.loopBufPar.loopEndPC   := loopEndPC
-
-  io.out.valid := LBstate === s_active && !(brTaken && !tsbbTaken)
-
-  def flush() = {
-    XSDebug("Loop Buffer Flushed.\n")
-    LBstate := s_idle
-    for(i <- 0 until IBufSize*2) {
-      // buffer(i).inst := 0.U // TODO: This is to make the debugging information clearer, this can be deleted
-      bufferValid(i) := false.B
+  def allocateEntry(n: UInt) = {
+    when(freeList.freeNum >= n) {
+      freeList.head := freeList.head + n
+      freeList.freeNum := freeList.freeNum - n
+      n
+    }.otherwise {
+      freeList.head := freeList.head + freeList.freeNum
+      freeList.freeNum := 0.U
+      freeList.freeNum
     }
   }
 
-  // Enque loop body
-  when(io.in.fire && LBstate === s_fill) {
-    io.loopBufPar.noTakenMask.asBools().zipWithIndex.map {case(m, i) =>
-      when(m) {
-        buffer(io.in.bits.pc(i)(7,1)).inst := io.in.bits.instrs(i)(15, 0)
-        bufferValid(io.in.bits.pc(i)(7,1)) := true.B
-        when(!io.in.bits.pd(i).isRVC) {
-          buffer(io.in.bits.pc(i)(7,1) + 1.U).inst := io.in.bits.instrs(i)(31, 16)
-          bufferValid(io.in.bits.pc(i)(7,1) + 1.U) := true.B // May need to be considered already valid
-        }
-      }
+  // Update curBodySize
+  for(i <- 0 until loopDetectorTableSize) {
+    when(loopDetector.valid(i)) {
+      val newBodySize = loopDetector.table(i).curBodySize + instNum
+      loopDetector.table(i).curBodySize := newBodySize
+
+      when(newBodySize > maxBody.U) { loopDetector.valid(i) := false.B }
     }
   }
 
-  // This is ugly
-  val pcStep = (0 until PredictWidth).map(i => Mux(!io.in.fire || !io.in.bits.mask(i), 0.U, Mux(io.in.bits.pd(i).isRVC, 1.U, 2.U))).fold(0.U(log2Up(16+1).W))(_+_)
-  val offsetCounterWire = WireInit(offsetCounter + pcStep)
-  offsetCounter := offsetCounterWire
+  val missVec = WireInit(VecInit(Seq.fill(DecodeWidth)(false.B)))
 
-  // Provide ICacheResp to IFU
-  when(LBstate === s_active) {
-    io.out.bits.pc   := io.loopBufPar.fetchReq
-    io.out.bits.data := Cat((31 to 0 by -1).map(i => buffer(io.loopBufPar.fetchReq(7,1) + i.U).inst))
-    io.out.bits.mask := Cat((31 to 0 by -1).map(i => bufferValid(io.loopBufPar.fetchReq(7,1) + i.U)))
-    io.out.bits.ipf  := false.B
-  }
-
-  io.loopBufPar.LBredirect.valid := false.B
-  io.loopBufPar.LBredirect.bits := DontCare
-
-  /*-----------------------*/
-  /*    Loop Buffer FSM    */
-  /*-----------------------*/
-  when(io.in.fire) {
-    switch(LBstate) {
-      is(s_idle) {
-        // To FILL
-        // 检测到sbb且跳转，sbb成为triggering sbb
-        when(sbbTaken) {
-          LBstate := s_fill
-          XSDebug("State change: FILL\n")
-          // This is ugly
-          // offsetCounter := Cat("b1".U, sbboffset(io.in.bits.instrs(brIdx))) + 
-          //   (0 until PredictWidth).map(i => Mux(!io.in.bits.mask(i) || i.U < brIdx, 0.U, Mux(io.in.bits.pd(i).isRVC, 1.U, 2.U))).fold(0.U(log2Up(16+1).W))(_+_)
-          offsetCounter := Cat("b1".U, sbboffset(io.in.bits.instrs(brIdx))._2)
-          tsbbPC := io.in.bits.pc(brIdx)
-        }
-      }
-      is(s_fill) {
-        // To AVTIVE
-        // triggering sbb 造成cof
-        when(offsetCounterWire((log2Up(IBufSize)+2)-1) === 0.U){
-          when(hasTsbb && tsbbTaken) {
-            LBstate := s_active
-            XSDebug("State change: ACTIVE\n")
-
-            loopStartPC := tsbbPC - sbboffset(io.in.bits.instrs(tsbbIdx))._1
-            loopEndPC := tsbbPC
-
-            XSDebug(p"loopStartPC = ${Hexadecimal(tsbbPC - sbboffset(io.in.bits.instrs(tsbbIdx))._1)}\n")
-            XSDebug(p"loopEndPC = ${Hexadecimal(tsbbPC)}\n")
-          }.otherwise {
-            LBstate := s_idle
-            XSDebug("State change: IDLE\n")
-            flush()
+  // update iterNum
+  for(i <- 0 until DecodeWidth) {
+    when(isBackwardBranch(io.in(i).bits.cf.instr)) {
+      val searchLDTVec = loopDetector.table.map(io.in(i).bits.cf.pc === _.pc)
+      val inLDT = searchLDTVec.reduce(_||_)
+      val idx = OHToUInt(PriorityEncoderOH(searchLDTVec)) // TODO: Need reverse?
+      when(inLDT) {
+        val matchEntry = loopDetector.table(idx)
+        when(matchEntry.firstIterBit || matchEntry.curBodySize === matchEntry.bodySize) {
+          matchEntry.iterNum := matchEntry.iterNum + 1.U
+          when(matchEntry.iterNum + 1.U === minIter.U) {
+            LBstate := s_fill
+            loopEntry := idx
           }
+        }.otherwise {
+          matchEntry.iterNum := 0.U
+          matchEntry.bodySize := matchEntry.curBodySize
         }
-
-        when(brTaken && !tsbbTaken) {
-          // To IDLE
-          LBstate := s_idle
-          XSDebug("State change: IDLE\n")
-          flush()
-        }
-      }
-      is(s_active) {
-        // To IDLE
-        // triggering sbb不跳转 退出循环
-        when(hasTsbb && !tsbbTaken) {
-          XSDebug("tsbb not taken, State change: IDLE\n")
-          LBstate := s_idle
-          io.loopBufPar.LBredirect.valid := true.B
-          io.loopBufPar.LBredirect.bits := redirect_pc
-          XSDebug(p"redirect pc=${Hexadecimal(redirect_pc)}\n")
-          flush()
-        }
-
-        when(brTaken && !tsbbTaken && !(redirect_pc >= loopStartPC && redirect_pc <= loopEndPC)) {
-          XSDebug("cof by other inst, State change: IDLE\n")
-          LBstate := s_idle
-          // io.loopBufPar.LBredirect.valid := true.B
-          // io.loopBufPar.LBredirect.bits := redirect_pc
-          // XSDebug(p"redirect pc=${Hexadecimal(redirect_pc)}\n")
-          flush()
-        }
-
-        // when(hasTsbb && brTaken && !tsbbTaken) {
-        //   XSDebug("tsbb and cof, State change: IDLE\n")
-        //   LBstate := s_idle
-        //   io.loopBufPar.LBredirect.valid := true.B
-        //   io.loopBufPar.LBredirect.bits := redirect_pc
-        //   XSDebug(p"redirect pc=${Hexadecimal(redirect_pc)}\n")
-        //   flush()
-        // }
+      }.otherwise {
+//        assert(loopDetector.size < loopDetectorTableSize.U)
+        missVec(idx) := true.B
       }
     }
   }
 
-  when(io.flush){
-    flush()
-  }
-
-  XSDebug(io.flush, "LoopBuffer Flushed\n")
-  // if (!env.FPGAPlatform ) {
-  //   ExcitingUtils.addSource(LBstate === s_active && hasTsbb && !tsbbTaken, "CntExitLoop1", Perf)
-  //   ExcitingUtils.addSource(LBstate === s_active && brTaken && !tsbbTaken, "CntExitLoop2", Perf)
-  // }
-
-  XSDebug(LBstate === s_idle, "Current state: IDLE\n")
-  XSDebug(LBstate === s_fill, "Current state: FILL\n")
-  XSDebug(LBstate === s_active, "Current state: ACTIVE\n")
-
-  XSDebug(p"offsetCounter = ${Binary(offsetCounterWire)}\n")
-  XSDebug(p"tsbbIdx = ${tsbbIdx}\n")
-  when(io.in.fire) {
-    XSDebug("Enque:\n")
-    XSDebug(brTaken, p"Detected jump, idx=${brIdx}\n")
-    XSDebug(p"predTaken=${io.in.bits.predTaken}, predTakenVec=${Binary(predTakenVec)}\n")
-    XSDebug(p"MASK=${Binary(io.in.bits.mask)}\n")
-    for(i <- 0 until PredictWidth){
-        XSDebug(p"PC=${Hexadecimal(io.in.bits.pc(i))} ${Hexadecimal(io.in.bits.instrs(i))}\n")
+  allocateEntry(PopCount(missVec))
+  var enqPtr = freeList.tail
+  for(i <- 0 until DecodeWidth) {
+    when(missVec(i) && !loopDetector.valid(enqPtr.value)) {
+      val entry = loopDetector.table(enqPtr.value)
+      loopDetector.valid(enqPtr.value) := true.B
+      entry.pc            := io.in(i).bits.cf.pc
+      entry.bodySize      := 0.U
+      entry.signature     := DontCare
+      entry.curBodySize   := PopCount(((~UIntToOH(i.U)).asUInt ^ (UIntToOH(i.U) - 1.U)) & Cat((0 until DecodeWidth).map(io.in(_).fire)))
+      entry.iterNum       := 1.U
+      entry.firstIterBit  := true.B
+      enqPtr = enqPtr + 1.U
     }
   }
 
-  XSDebug("LoopBuffer:\n")
-  for(i <- 0 until IBufSize*2/8) {
-    XSDebug("%x v:%b | %x v:%b | %x v:%b | %x v:%b | %x v:%b | %x v:%b | %x v:%b | %x v:%b\n",
-      buffer(i*8+0).inst, bufferValid(i*8+0),
-        buffer(i*8+1).inst, bufferValid(i*8+1),
-        buffer(i*8+2).inst, bufferValid(i*8+2),
-        buffer(i*8+3).inst, bufferValid(i*8+3),
-        buffer(i*8+4).inst, bufferValid(i*8+4),
-        buffer(i*8+5).inst, bufferValid(i*8+5),
-        buffer(i*8+6).inst, bufferValid(i*8+6),
-        buffer(i*8+7).inst, bufferValid(i*8+7)
-    )
+  when(LBstate === s_fill) {
+    // Save loop
+    var enqIdx = loopDetector.bufferSize
+    for(i <- 0 until DecodeWidth) {
+      when(io.in(i).fire) {
+        loopDetector.buffer(enqIdx) := io.in(i).bits
+        enqIdx = enqIdx + 1.U
+      }
+    }
+
+    when(enqIdx >= loopDetector.table(loopEntry).bodySize) {
+      LBstate := s_active
+    }
+    loopDetector.bufferSize := enqIdx
   }
 
-  XSDebug(io.out.valid, p"fetch pc: ${Hexadecimal(io.loopBufPar.fetchReq)}\n")
-  XSDebug(io.out.valid, p"fetchIdx: ${io.loopBufPar.fetchReq(7,1)}\n")
-  XSDebug(io.out.valid, p"out data: ${Hexadecimal(io.out.bits.data)}\n")
-  XSDebug(io.out.valid, p"out mask: ${Binary(io.out.bits.mask)}\n")
-  XSDebug(io.out.valid, p"out pc  : ${Hexadecimal(io.out.bits.pc)}\n")
+  when(LBstate === s_active) {
+    (0 until DecodeWidth).foreach(io.in(_).ready := false.B)
+    var deqIdx = loopDetector.bufferPtr
+    for(i <- 0 until DecodeWidth) {
+      io.out(i).valid := deqIdx < loopDetector.bufferSize
+      io.out(i).bits := loopDetector.buffer(deqIdx)
+    }
+  }
+
+  when(io.flush) {
+    LBstate := s_idle
+    loopDetector.valid := 0.U.asTypeOf(Vec(loopDetectorTableSize, Bool))
+  }
 }

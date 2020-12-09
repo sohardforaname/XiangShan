@@ -388,6 +388,8 @@ class LoadQueue extends XSModule with HasDCacheParameters with HasCircularQueueP
       val sameFlag = io.storeIn(i).bits.uop.lqIdx.flag === ringBufferHeadExtended.flag
       val toEnqPtrMask = Mux(sameFlag, xorMask, ~xorMask)
 
+
+
       // check if load already in lq needs to be rolledback
       val lqViolationVec = VecInit((0 until LoadQueueSize).map(j => {
         val addrMatch = allocated(j) &&
