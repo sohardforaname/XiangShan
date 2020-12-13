@@ -370,12 +370,12 @@ class IFU extends XSModule with HasIFUConst
 
   //this fetch packet has sfb
   val if4_sfb_enable = if4_sfb_vec.reduce(_||_)      
-  //sfb index inthe fetch packet (0-15)       
+  //sfb index in the fetch packet (0-15)       
   val if4_sfb_idx    = PriorityEncoder(if4_sfb_vec)  
   //sfb range mask
   //e.g:   if 2 is sfb and the target is 7
   //       the mask is:    0000_0000_0111_1000
-  val if4_sfb_mask   = pd_range_mask(if4_sfb_idx)                           
+  val if4_sfb_mask   = pd_range_mask(if4_sfb_idx) & fetchPacketWire.mask                           
   
 
   // when(if4_bp.taken) {
@@ -479,6 +479,12 @@ class IFU extends XSModule with HasIFUConst
   io.fetchPacket.valid := fetchPacketValid
   loopBuffer.io.in.valid := io.fetchPacket.fire
 
+  //SFB signals
+  (0 until PredictWidth).map {
+    fetchPacketWire.is_sfb_br(i) := if4_sfb_vec(i)
+    fetchPacketWire.is_sfb_shadow(i) := if4_sfb_enable && if4_sfb_mask(i)
+  }
+
   if(EnableSFB && !env.FPGAPlatform){
     ExcitingUtils.addSource( if4_sfb_enable.asBool && io.fetchPacket.fire(), "shortFowardBranchValid", Perf)
   }
@@ -524,7 +530,7 @@ class IFU extends XSModule with HasIFUConst
     XSDebug(io.fetchPacket.fire(), "[IF4][fetchPacket] v=%d r=%d mask=%b ipf=%d crossPageIPF=%d\n",
       io.fetchPacket.valid, io.fetchPacket.ready, io.fetchPacket.bits.mask, io.fetchPacket.bits.ipf, io.fetchPacket.bits.crossPageIPFFix)
     for (i <- 0 until PredictWidth) {
-      XSDebug(io.fetchPacket.fire(), "[IF4][fetchPacket] %b %x pc=%x pnpc=%x pd: rvc=%d brType=%b call=%d ret=%d\n",
+      XSDebug(io.fetchPacket.fire(), "[IF4][fetchPacket] %b %x pc=%x pnpc=%x pd: rvc=%d brType=%b call=%d ret=%d sfb=%d shadow=%d\n",
         io.fetchPacket.bits.mask(i),
         io.fetchPacket.bits.instrs(i),
         io.fetchPacket.bits.pc(i),
@@ -532,7 +538,9 @@ class IFU extends XSModule with HasIFUConst
         io.fetchPacket.bits.pd(i).isRVC,
         io.fetchPacket.bits.pd(i).brType,
         io.fetchPacket.bits.pd(i).isCall,
-        io.fetchPacket.bits.pd(i).isRet
+        io.fetchPacket.bits.pd(i).isRet,
+        io.fetchPacket.bits.is_sfb_br,
+        io.fetchPacket.bits.is_sfb_shadow
       )
     }
   }
