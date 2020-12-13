@@ -41,7 +41,6 @@ class Alu extends FunctionUnit with HasRedirectOut {
     ALUOpType.and  -> (src1  &  src2),
     ALUOpType.sra  -> ((shsrc1.asSInt >> shamt).asUInt)
   ))
-  val aluRes = Mux(ALUOpType.isWordOp(func), SignExt(res(31,0), 64), res)
 
   val branchOpTable = List(
     ALUOpType.getBranchType(ALUOpType.beq)  -> !xorRes.orR,
@@ -65,6 +64,22 @@ class Alu extends FunctionUnit with HasRedirectOut {
   redirectOut.isReplay := false.B
   redirectOut.roqIdx := uop.roqIdx
 
+  //deal with sfb
+  val is_sfb_br = uop.is_sfb_br
+  val is_sfb_shadow = uop.is_sfb_shadow
+  val lrs1_is_lrd = uop.ctrl.lrs1_is_lrd && is_sfb_shadow
+  val pred_yes = is_sfb_shadow && uop.predData
+  val is_mov = (func === ALUOpType.mov) && is_sfb_shadow
+
+  val aluRes = Mux(is_sfb_br, taken.asUInt,
+                      Mux(pred_yes,
+                          Mux(lrs1_is_lrd, src1, src2),
+                          Mux(is_mov, src2 ,res))
+                  )
+
+  val aluResOut = Mux(ALUOpType.isWordOp(func), SignExt(aluRes(31,0), 64), aluRes)
+
+
   brUpdate := uop.cf.brUpdate
   // override brUpdate
   brUpdate.pc := uop.cf.pc
@@ -76,5 +91,5 @@ class Alu extends FunctionUnit with HasRedirectOut {
   io.in.ready := io.out.ready
   io.out.valid := valid
   io.out.bits.uop <> io.in.bits.uop
-  io.out.bits.data := aluRes
+  io.out.bits.data := aluResOut
 }
