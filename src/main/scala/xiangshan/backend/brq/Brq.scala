@@ -124,7 +124,7 @@ class Brq extends XSModule with HasCircularQueuePtrHelper {
   val deqValid = stateQueue(headIdx).isCommit && brCommitCnt=/=0.U
   val commitValid = stateQueue(commitIdx).isWb
   val commitEntry = brQueue(commitIdx)
-  val commitIsMisPred = commitEntry.exuOut.redirect.isMisPred
+  val commitIsMisPred = commitEntry.exuOut.redirect.isMisPred && !commitEntry.exuOut.uop.is_sfb_br
 
   brCommitCnt := brCommitCnt + io.bcommit - deqValid
 
