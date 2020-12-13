@@ -5,7 +5,7 @@ import chisel3.util._
 import xiangshan._
 import utils._
 import xiangshan.backend.exu.Exu._
-import xiangshan.backend.regfile.RfReadPort
+import xiangshan.backend.regfile.{RfReadPort, PdReadPort}
 import xiangshan.backend.exu._
 
 class Dispatch2Int extends XSModule {
@@ -13,6 +13,8 @@ class Dispatch2Int extends XSModule {
     val fromDq = Flipped(Vec(dpParams.IntDqDeqWidth, DecoupledIO(new MicroOp)))
     val readRf = Vec(NRIntReadPorts - NRMemReadPorts, Flipped(new RfReadPort))
     val regRdy = Vec(NRIntReadPorts - NRMemReadPorts, Input(Bool()))
+    val readPd = Vec(NRPdReadPorts, Flipped(new PdReadPort))
+    val predRdy = Vec(NRPdReadPorts, Input(Bool()))
     val numExist = Input(Vec(exuParameters.IntExuCnt, UInt(log2Ceil(IssQueSize).W)))
     val enqIQCtrl = Vec(exuParameters.IntExuCnt, DecoupledIO(new MicroOp))
     val enqIQData = Vec(exuParameters.IntExuCnt, Output(new ExuInput))
@@ -78,6 +80,7 @@ class Dispatch2Int extends XSModule {
     val index = WireInit(VecInit(intStaticMapped(i) +: intDynamicMapped))
     io.readRf(2*i  ).addr := io.fromDq(index(intReadPortSrc(i))).bits.psrc1
     io.readRf(2*i+1).addr := io.fromDq(index(intReadPortSrc(i))).bits.psrc2
+    io.readPd(2*i).addr   := io.fromDq(index(intReadPortSrc(i))).bits.ppred
   }
   val readPortIndex = Wire(Vec(exuParameters.IntExuCnt, UInt(log2Ceil(NRIntReadPorts).W)))
   intStaticIndex.zipWithIndex.map({case (index, i) => readPortIndex(index) := (2*i).U})
@@ -92,6 +95,7 @@ class Dispatch2Int extends XSModule {
     enq.bits := io.fromDq(indexVec(i)).bits
     enq.bits.src1State := io.regRdy(readPortIndex(i))
     enq.bits.src2State := io.regRdy(readPortIndex(i) + 1.U)
+    enq.bits.ppredState := io.predRdy(readPortIndex(i))
 
     XSInfo(enq.fire(), p"pc 0x${Hexadecimal(enq.bits.cf.pc)} with type ${enq.bits.ctrl.fuType} " +
       p"srcState(${enq.bits.src1State} ${enq.bits.src2State}) " +
@@ -126,6 +130,10 @@ class Dispatch2Int extends XSModule {
       SignExt(uopReg(i).cf.pc, XLEN), io.readRf(readPortIndexReg(i)).data)
     io.enqIQData(i).src2 := Mux(uopReg(i).ctrl.src2Type === SrcType.imm,
       uopReg(i).ctrl.imm, io.readRf(readPortIndexReg(i) + 1.U).data)
+
+    io.enqIQCtrl(i).bits.predData := Mux(uopReg(i).is_sfb_shadow,
+      io.readPd(readPortIndexReg(i)).data, false.B)
+    
 
     XSDebug(dataValidRegDebug(i),
       p"pc 0x${Hexadecimal(uopReg(i).cf.pc)} reads operands from " +
