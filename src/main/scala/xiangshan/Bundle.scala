@@ -156,7 +156,7 @@ class CtrlSignals extends XSBundle {
   val commitType = CommitType()
   
   //sfb signals
-  val lrs1_is_ld = Bool()
+  val lrs1_is_lrd = Bool()
 }
 
 class CfCtrl extends XSBundle {
@@ -164,6 +164,7 @@ class CfCtrl extends XSBundle {
   val ctrl = new CtrlSignals
   val brTag = new BrqPtr
 
+  //sfb signals
   def is_sfb_br     = cf.is_sfb_br     
   def is_sfb_shadow = cf.is_sfb_shadow 
 }
@@ -189,6 +190,7 @@ class MicroOp extends CfCtrl with HasLSIdx {
   //sfb signals
   val ppredState = SrcState()
   val ppred = UInt(log2Ceil(BrqSize).W)
+  val predData = Bool()
 }
 
 class Redirect extends XSBundle {
@@ -212,7 +214,9 @@ class ReplayPregReq extends XSBundle {
   // NOTE: set isInt and isFp both to 'false' when invalid
   val isInt = Bool()
   val isFp = Bool()
+  val isShadow = Bool()
   val preg = UInt(PhyRegIdxWidth.W)
+  val ppred = UInt(PredWidth.W)
 }
 
 class DebugBundle extends XSBundle{
