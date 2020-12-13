@@ -4,18 +4,19 @@ import chisel3._
 import chisel3.util._
 import xiangshan._
 import xiangshan.backend.decode.{DecodeBuffer, DecodeStage}
-import xiangshan.backend.rename.{Rename, BusyTable}
+import xiangshan.backend.rename.{Rename, BusyTable, PredBusyTable}
 import xiangshan.backend.brq.Brq
 import xiangshan.backend.dispatch.Dispatch
 import xiangshan.backend.exu._
 import xiangshan.backend.exu.Exu.exuConfigs
-import xiangshan.backend.regfile.RfReadPort
+import xiangshan.backend.regfile.{RfReadPort, PdReadPort}
 import xiangshan.backend.roq.{Roq, RoqPtr, RoqCSRIO}
 
 class CtrlToIntBlockIO extends XSBundle {
   val enqIqCtrl = Vec(exuParameters.IntExuCnt, DecoupledIO(new MicroOp))
   val enqIqData = Vec(exuParameters.IntExuCnt, Output(new ExuInput))
   val readRf = Vec(NRIntReadPorts, Flipped(new RfReadPort))
+  val readPd = Vec(NRPdReadPorts, Flipped(new PdReadPort))
   val redirect = ValidIO(new Redirect)
 }
 
@@ -65,6 +66,7 @@ class CtrlBlock extends XSModule {
   val dispatch = Module(new Dispatch)
   val intBusyTable = Module(new BusyTable(NRIntReadPorts, NRIntWritePorts))
   val fpBusyTable = Module(new BusyTable(NRFpReadPorts, NRFpWritePorts))
+  val predBusyTable = Module(new PredBusyTable(NRPdReadPorts, NRPdWritePorts))
 
   val roqWbSize = NRIntWritePorts + NRFpWritePorts + exuParameters.StuCnt + 1
 
@@ -115,11 +117,14 @@ class CtrlBlock extends XSModule {
   )
   dispatch.io.readIntRf <> io.toIntBlock.readRf
   dispatch.io.readFpRf <> io.toFpBlock.readRf
+  dispatch.io.readPdRf <> io.toIntBlock.readPd
   dispatch.io.allocPregs.zipWithIndex.foreach { case (preg, i) =>
     intBusyTable.io.allocPregs(i).valid := preg.isInt
     fpBusyTable.io.allocPregs(i).valid := preg.isFp
+    predBusyTable.io.allocPregs(i).valid := preg.isShadow
     intBusyTable.io.allocPregs(i).bits := preg.preg
     fpBusyTable.io.allocPregs(i).bits := preg.preg
+    predBusyTable.io.allocPregs(i).bits := preg.ppred
   }
   dispatch.io.numExist <> io.fromIntBlock.numExist ++ io.fromFpBlock.numExist ++ io.fromLsBlock.numExist
   dispatch.io.enqIQCtrl <> io.toIntBlock.enqIqCtrl ++ io.toFpBlock.enqIqCtrl ++ io.toLsBlock.enqIqCtrl
@@ -129,6 +134,7 @@ class CtrlBlock extends XSModule {
   val flush = redirect.valid && (redirect.bits.isException || redirect.bits.isFlushPipe)
   fpBusyTable.io.flush := flush
   intBusyTable.io.flush := flush
+  predBusyTable.io.flush := flush
   for((wb, setPhyRegRdy) <- io.fromIntBlock.wbRegs.zip(intBusyTable.io.wbPregs)){
     setPhyRegRdy.valid := wb.valid && wb.bits.uop.ctrl.rfWen && (wb.bits.uop.ctrl.ldest =/= 0.U)
     setPhyRegRdy.bits := wb.bits.uop.pdest
@@ -137,15 +143,25 @@ class CtrlBlock extends XSModule {
     setPhyRegRdy.valid := wb.valid && wb.bits.uop.ctrl.fpWen
     setPhyRegRdy.bits := wb.bits.uop.pdest
   }
+  for((wb, setPhyRegRdy) <- io.fromIntBlock.wbRegs.zip(predBusyTable.io.wbPregs)){
+    setPhyRegRdy.valid := wb.valid && wb.bits.uop.is_sfb_br
+    setPhyRegRdy.bits := wb.bits.uop.ppred
+  }
   intBusyTable.io.rfReadAddr <> dispatch.io.readIntRf.map(_.addr)
   intBusyTable.io.pregRdy <> dispatch.io.intPregRdy
   fpBusyTable.io.rfReadAddr <> dispatch.io.readFpRf.map(_.addr)
   fpBusyTable.io.pregRdy <> dispatch.io.fpPregRdy
+
+  predBusyTable.io.rfReadAddr <> dispatch.io.readPdRf.map(_.addr)
+  predBusyTable.io.pregRdy <> dispatch.io.pdPregRdy
+
   for(i <- 0 until ReplayWidth){
     intBusyTable.io.replayPregs(i).valid := dispatch.io.replayPregReq(i).isInt
     fpBusyTable.io.replayPregs(i).valid := dispatch.io.replayPregReq(i).isFp
     intBusyTable.io.replayPregs(i).bits := dispatch.io.replayPregReq(i).preg
     fpBusyTable.io.replayPregs(i).bits := dispatch.io.replayPregReq(i).preg
+
+    //TODO: pred reg file replay connection
   }
 
   roq.io.memRedirect <> io.fromLsBlock.replay
