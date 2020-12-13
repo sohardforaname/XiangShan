@@ -107,11 +107,11 @@ class PredBusyTable(numReadPorts: Int, numWritePorts: Int) extends XSModule {
     busy_table := 0.U(PredWidth.W)
   }
 
-  XSDebug(p"busy_table    : ${Binary(busy_table)}\n")
-  XSDebug(p"tableNext: ${Binary(tableAfterAlloc)}\n")
-  XSDebug(p"allocMask: ${Binary(allocMask)}\n")
-  XSDebug(p"wbMask   : ${Binary(wbMask)}\n")
+  XSDebug(p"[Pred]busy_table    : ${Binary(busy_table)}\n")
+  XSDebug(p"[Pred]tableNext: ${Binary(tableAfterAlloc)}\n")
+  XSDebug(p"[Pred]allocMask: ${Binary(allocMask)}\n")
+  XSDebug(p"[Pred]wbMask   : ${Binary(wbMask)}\n")
   for (i <- 0 until NRPhyRegs) {
-    XSDebug(busy_table(i), "%d is busy\n", i.U)
+    XSDebug(busy_table(i), "[Pred]%d is busy\n", i.U)
   }
 }

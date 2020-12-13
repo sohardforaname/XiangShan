@@ -202,6 +202,8 @@ class Rename extends XSModule {
       uops(i).ppred := next_brq_idx
     }
   }
+
+  XSDebug("current_brq_idx: %d\n",current_brq_idx.asUInt)
   
   current_brq_idx := next_brq_idx
 
