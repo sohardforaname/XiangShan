@@ -59,6 +59,8 @@ case class XSCoreParameters
   NRIntWritePorts: Int = 8,
   NRFpReadPorts: Int = 14,
   NRFpWritePorts: Int = 8,
+  NRPdReadPorts: Int = 14,
+  NRPdWritePorts: Int = 8,
   LoadQueueSize: Int = 64,
   StoreQueueSize: Int = 48,
   RoqSize: Int = 192,
@@ -144,6 +146,7 @@ trait HasXSParameter {
   val BrqSize = core.BrqSize
   val IssQueSize = core.IssQueSize
   val BrTagWidth = log2Up(BrqSize)
+  val PredWidth = log2Up(BrqSize)
   val NRPhyRegs = core.NRPhyRegs
   val PhyRegIdxWidth = log2Up(NRPhyRegs)
   val RoqSize = core.RoqSize
@@ -157,6 +160,8 @@ trait HasXSParameter {
   val NRMemReadPorts = exuParameters.LduCnt + 2*exuParameters.StuCnt
   val NRFpReadPorts = core.NRFpReadPorts
   val NRFpWritePorts = core.NRFpWritePorts
+  val NRPdReadPorts = core.NRPdReadPorts
+  val NRPdWritePorts = core.NRPdWritePorts
   val LoadPipelineWidth = core.LoadPipelineWidth
   val StorePipelineWidth = core.StorePipelineWidth
   val StoreBufferSize = core.StoreBufferSize
