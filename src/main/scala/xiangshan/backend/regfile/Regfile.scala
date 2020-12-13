@@ -15,6 +15,16 @@ class RfWritePort extends XSBundle {
   val data = Input(UInt((XLEN + 1).W))
 }
 
+class PdReadPort extends XSBundle {
+  val addr = Input(UInt(PredWidth.W))
+  val data = Output(Bool())
+}
+
+class PdWritePort extends XSBundle {
+  val wen = Input(Bool())
+  val addr = Input(UInt(PredWidth.W))
+}
+
 class Regfile
 (
   numReadPorts: Int,
@@ -164,6 +174,27 @@ class regfile_160x64_10w16r_sim extends BlackBox with HasBlackBoxResource {
   val vsrc = "/vsrc/regfile_160x64_10w16r_sim.v"
   println(s"Regfile: Using verilog source at: $vsrc")
   setResource(vsrc)
+
+}
+
+class PredRegfile extends XSModule {
+	val io = IO(new Bundle() {
+		val readPorts = Vec(NRPdReadPorts, new PdReadPort)
+		val writePorts = Vec(NRPdWritePorts, new PdWritePort)
+	})
+
+  	val mem = RegInit(0.U(BrqSize.W)).asTypeOf(Vec(BrqSize,Bool()))
+
+	for(r <- io.readPorts){
+	  val addr_reg = RegNext(r.addr)
+	  r.data :=  mem(addr_reg)
+	}
+
+	for(w <- io.writePorts){
+	  when(w.wen){
+		mem(w.addr) := true.B
+	  }
+	}
 
 }
 
