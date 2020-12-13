@@ -7,7 +7,7 @@ import xiangshan.backend.exu.Exu.{jumpExeUnitCfg, ldExeUnitCfg, stExeUnitCfg}
 import xiangshan.backend.exu.{AluExeUnit, ExuConfig, JumpExeUnit, MulDivExeUnit, Wb}
 import xiangshan.backend.fu.FenceToSbuffer
 import xiangshan.backend.issue.{ReservationStationCtrl, ReservationStationData}
-import xiangshan.backend.regfile.Regfile
+import xiangshan.backend.regfile.{Regfile,PredRegfile}
 import xiangshan.backend.fu.fpu.Fflags
 
 class WakeUpBundle(numFast: Int, numSlow: Int) extends XSBundle {
@@ -98,6 +98,8 @@ class IntegerBlock
     hasZero = true,
     len = XLEN
   ))
+
+  val predRf = Module(new PredRegfile)
 
   val aluExeUnits = Array.tabulate(exuParameters.AluCnt)(_ => Module(new AluExeUnit))
   val jmpExeUnit = Module(new JumpExeUnit)
@@ -209,6 +211,7 @@ class IntegerBlock
 
   // read int rf from ctrl block
   intRf.io.readPorts <> io.fromCtrlBlock.readRf
+  predRf.io.readPorts <> io.fromCtrlBlock.readPd
   // write int rf arbiter
   val intWbArbiter = Module(new Wb(
     (exeUnits.map(_.config) ++ fastWakeUpIn ++ slowWakeUpIn).map(_.wbIntPriority),
@@ -224,5 +227,11 @@ class IntegerBlock
       rf.wen := wb.valid && wb.bits.uop.ctrl.rfWen
       rf.addr := wb.bits.uop.pdest
       rf.data := wb.bits.data
+  }
+
+  predRf.io.writePorts.zip(intWbArbiter.io.out).foreach{
+    case (rf, wb) =>
+      rf.wen := wb.valid && wb.bits.uop.is_sfb_br && wb.bits.brUpdate.taken
+      rf.addr := wb.bits.uop.ppred
   }
 }
