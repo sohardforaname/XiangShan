@@ -24,6 +24,8 @@ class Ibuffer extends XSModule {
     val pd = new PreDecodeInfo
     val ipf = Bool()
     val crossPageIPFFix = Bool()
+    val is_sfb_br = Vec(PredictWidth, Bool())
+    val is_sfb_shadow = Vec(PredictWidth, Bool())
   }
 
   // Ignore
@@ -66,6 +68,8 @@ class Ibuffer extends XSModule {
       inWire.pd := io.in.bits.pd(i)
       inWire.ipf := io.in.bits.ipf
       inWire.crossPageIPFFix := io.in.bits.crossPageIPFFix
+      inWire.is_sfb_br := io.in.bits.is_sfb_br
+      inWire.is_sfb_shadow := io.in.bits.is_sfb_shadow
 
       ibuf(enq_idx) := inWire
       enq_idx = enq_idx + io.in.bits.mask(i)
@@ -97,6 +101,8 @@ class Ibuffer extends XSModule {
       io.out(i).bits.brUpdate.pd := outWire.pd
       io.out(i).bits.brUpdate.brInfo := outWire.brInfo
       io.out(i).bits.crossPageIPFFix := outWire.crossPageIPFFix
+      io.out(i).bits.is_sfb_br := outWire.is_sfb_br
+      io.out(i).bits.is_sfb_shadow := outWire.is_sfb_shadow
     }
     head_ptr := head_ptr + io.out.map(_.fire).fold(0.U(log2Up(DecodeWidth).W))(_+_)
   }.otherwise {
