@@ -5,8 +5,6 @@ import chisel3.util._
 import xiangshan._
 import utils._
 import xiangshan.backend.exu.{Exu, ExuConfig}
-import java.rmi.registry.Registry
-import java.{util => ju}
 
 class BypassQueue(number: Int) extends XSModule {
   val io = IO(new Bundle {
@@ -62,7 +60,7 @@ class ReservationStationCtrl
   feedback: Boolean,
   fixedDelay: Int,
   replayDelay: Int = 10
-) extends XSModule {
+) extends XSModule with HasCircularQueuePtrHelper {
 
   val iqSize = IssQueSize
   val iqIdxWidth = log2Up(iqSize)
@@ -97,7 +95,8 @@ class ReservationStationCtrl
   val cntQueue      = Reg(Vec(iqSize, UInt(log2Up(replayDelay).W)))
 
   // rs queue part:
-  val tailPtr       = RegInit(0.U((iqIdxWidth+1).W))
+  // val tailPtr       = RegInit(0.U((iqIdxWidth+1).W))
+  val tailPtr       = RegInit(0.U.asTypeOf(new CircularQueuePtr(iqSize)))
   val idxQueue      = RegInit(VecInit((0 until iqSize).map(_.U(iqIdxWidth.W))))
   val readyQueue    = VecInit(srcQueue.zip(validQueue).zip(predQueue).map{ case ((a,b),c) => Cat(a).andR & b & c})
 
@@ -135,7 +134,7 @@ class ReservationStationCtrl
                               Mux(notBlock, !selectedIdxRegOH(i), true.B)
   )))
   val (firstBubble, findBubble) = PriorityEncoderWithFlag(bubMask)
-  haveBubble := findBubble && (firstBubble < tailPtr)
+  haveBubble := findBubble && (firstBubble < tailPtr.asUInt)
   val bubValid = haveBubble
   val bubReg = RegNext(bubValid)
   val bubIdxReg = RegNext(firstBubble - moveMask(firstBubble))
@@ -207,16 +206,18 @@ class ReservationStationCtrl
 
   // enq
   val tailAfterRealDeq = tailPtr - (issFire && !needFeedback|| bubReg)
-  val isFull = tailAfterRealDeq.head(1).asBool() // tailPtr===qsize.U
-  tailPtr := tailAfterRealDeq + io.enqCtrl.fire()
+  val isFull = tailAfterRealDeq.flag // tailPtr===qsize.U
+  // agreement with dispatch: don't fire when io.redirect.valid
+  val enqFire = io.enqCtrl.fire() && !io.redirect.valid
+  tailPtr := tailAfterRealDeq + enqFire
 
-  io.enqCtrl.ready := !isFull && !io.redirect.valid // TODO: check this redirect && need more optimization
+  io.enqCtrl.ready := !isFull
   val enqUop      = io.enqCtrl.bits
   val srcSeq      = Seq(enqUop.psrc1, enqUop.psrc2, enqUop.psrc3)
   val srcTypeSeq  = Seq(enqUop.ctrl.src1Type, enqUop.ctrl.src2Type, enqUop.ctrl.src3Type)
   val srcStateSeq = Seq(enqUop.src1State, enqUop.src2State, enqUop.src3State)
 
-  val enqIdx_ctrl = tailAfterRealDeq.tail(1)
+  val enqIdx_ctrl = tailAfterRealDeq.value
   val enqBpVec = io.data.srcUpdate(IssQueSize)
   val enqBpPred = io.data.predUpdate(IssQueSize)
 
@@ -225,7 +226,7 @@ class ReservationStationCtrl
     (srcType === SrcType.reg && src === 0.U)
   }
 
-  when (io.enqCtrl.fire()) {
+  when (enqFire) {
     stateQueue(enqIdx_ctrl) := s_valid
     srcQueue(enqIdx_ctrl).zipWithIndex.map{ case (s, i) =>
       s := Mux(enqBpVec(i) || stateCheck(srcSeq(i), srcTypeSeq(i)), true.B,
@@ -258,19 +259,19 @@ class ReservationStationCtrl
   }
 
   // other to Data
-  io.data.enqPtr := idxQueue(Mux(tailPtr.head(1).asBool, deqIdx, tailPtr.tail(1)))
+  io.data.enqPtr := idxQueue(Mux(tailPtr.flag, deqIdx, tailPtr.value))
   io.data.deqPtr.valid  := selValid
   io.data.deqPtr.bits   := idxQueue(selectedIdxWire)
-  io.data.enqCtrl.valid := io.enqCtrl.fire
+  io.data.enqCtrl.valid := enqFire
   io.data.enqCtrl.bits  := io.enqCtrl.bits
 
   // other io
-  io.numExist := tailPtr
+  io.numExist := Mux(tailPtr.flag, (iqSize-1).U, tailPtr.value) // NOTE: numExist is iqIdxWidth.W, maybe a bug
 
   // assert
-  assert(RegNext(tailPtr <= iqSize.U))
+  assert(RegNext(Mux(tailPtr.flag, tailPtr.value===0.U, true.B)))
 
-  val print = !(tailPtr===0.U) || io.enqCtrl.valid
+  val print = !(tailPtr.asUInt===0.U) || io.enqCtrl.valid
   XSDebug(print || true.B, p"In(${io.enqCtrl.valid} ${io.enqCtrl.ready}) Out(${issValid} ${io.data.fuReady})\n")
   XSDebug(print , p"tailPtr:${tailPtr} tailPtrAdq:${tailAfterRealDeq} isFull:${isFull} " +
     p"needFeed:${needFeedback} vQue:${Binary(VecInit(validQueue).asUInt)} rQue:${Binary(readyQueue.asUInt)}\n")
@@ -347,8 +348,8 @@ class ReservationStationData
 
   // enq
   val enqPtr = enq(log2Up(IssQueSize)-1,0)
-  val enqPtrReg = RegEnable(enqPtr, enqCtrl.fire())
-  val enqEn  = enqCtrl.fire()
+  val enqPtrReg = RegEnable(enqPtr, enqCtrl.valid)
+  val enqEn  = enqCtrl.valid
   val enqEnReg = RegNext(enqEn)
   when (enqEn) {
     uop(enqPtr) := enqUop
@@ -441,7 +442,7 @@ class ReservationStationData
   val srcTypeSeq = Seq(enqUop.ctrl.src1Type, enqUop.ctrl.src2Type, enqUop.ctrl.src3Type)
   val shadowReg = RegNext(enqUop.is_sfb_shadow)
   io.ctrl.srcUpdate(IssQueSize).zipWithIndex.map{ case (h, i) =>
-    val (bpHit, bpHitReg, bpData)= bypass(srcSeq(i), srcTypeSeq(i), enqCtrl.fire())
+    val (bpHit, bpHitReg, bpData)= bypass(srcSeq(i), srcTypeSeq(i), enqCtrl.valid)
     when (bpHitReg) { data(enqPtrReg)(i) := bpData }
     h := bpHit
     // NOTE: enq bp is done here
