@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 import xiangshan._
 import utils._
-import xiangshan.backend.regfile.RfReadPort
+import xiangshan.backend.regfile.{RfReadPort, PdReadPort}
 import chisel3.ExcitingUtils._
 import xiangshan.backend.roq.RoqPtr
 import xiangshan.backend.rename.RenameBypassInfo
@@ -48,9 +48,11 @@ class Dispatch extends XSModule {
     // read regfile
     val readIntRf = Vec(NRIntReadPorts, Flipped(new RfReadPort))
     val readFpRf = Vec(NRFpReadPorts, Flipped(new RfReadPort))
+    val readPdRf = Vec(NRPdReadPorts, Flipped(new PdReadPort))
     // read reg status (busy/ready)
     val intPregRdy = Vec(NRIntReadPorts, Input(Bool()))
     val fpPregRdy = Vec(NRFpReadPorts, Input(Bool()))
+    val pdPregRdy = Vec(NRPdReadPorts, Input(Bool()))
     // replay: set preg status to not ready
     val replayPregReq = Output(Vec(ReplayWidth, new ReplayPregReq))
     val allocPregs = Vec(RenameWidth, Output(new ReplayPregReq))
@@ -118,6 +120,8 @@ class Dispatch extends XSModule {
   intDispatch.io.fromDq <> intDq.io.deq
   intDispatch.io.readRf.zipWithIndex.map({case (r, i) => r <> io.readIntRf(i)})
   intDispatch.io.regRdy.zipWithIndex.map({case (r, i) => r <> io.intPregRdy(i)})
+  intDispatch.io.readPd.zipWithIndex.map({case (r, i) => r <> io.readPdRf(i)})
+  intDispatch.io.predRdy.zipWithIndex.map({case (r, i) => r <> io.pdPregRdy(i)})
   intDispatch.io.numExist.zipWithIndex.map({case (num, i) => num := io.numExist(i)})
   intDispatch.io.enqIQCtrl.zipWithIndex.map({case (enq, i) => enq <> io.enqIQCtrl(i)})
   intDispatch.io.enqIQData.zipWithIndex.map({case (enq, i) => enq <> io.enqIQData(i)})
