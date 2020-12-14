@@ -204,7 +204,7 @@ class Decoder extends XSModule with HasInstrType {
   //deal with SFB
   io.out.ctrl.lrs1_is_lrd := io.in.is_sfb_shadow
 
-  when(io.in.is_sfb_shadow && io.out.ctrl.src2Type === SrcType.imm){
+  when(io.in.is_sfb_shadow && instrType === InstrI ){
     io.out.ctrl.src2Type    := SrcType.reg
     io.out.ctrl.lsrc2       := rfDest
     io.out.ctrl.lrs1_is_lrd  := false.B

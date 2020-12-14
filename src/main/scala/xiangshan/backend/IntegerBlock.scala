@@ -167,7 +167,7 @@ class IntegerBlock
       x.exuCfg.hasCertainLatency && x.exuCfg.writeIntRf
     ).map(x => {
       val raw = WireInit(x.io.selectedUop)
-      raw.valid := x.io.selectedUop.valid && raw.bits.ctrl.rfWen
+      raw.valid := (x.io.selectedUop.valid && raw.bits.ctrl.rfWen)
       raw
     })
     rs.io.broadcastedUops <> inBlockUops ++ io.wakeUpIn.fastUops

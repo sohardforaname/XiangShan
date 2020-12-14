@@ -149,6 +149,8 @@ class CtrlBlock extends XSModule with HasCircularQueuePtrHelper {
   intBusyTable.io.pregRdy <> dispatch.io.intPregRdy
   fpBusyTable.io.rfReadAddr <> dispatch.io.readFpRf.map(_.addr)
   fpBusyTable.io.pregRdy <> dispatch.io.fpPregRdy
+  predBusyTable.io.rfReadAddr <> dispatch.io.readPdRf.map(_.addr)
+  predBusyTable.io.pregRdy <> dispatch.io.pdPregRdy
 
   roq.io.memRedirect := DontCare
   roq.io.memRedirect.valid := false.B

@@ -402,6 +402,7 @@ class ReservationStationData
   }
 
   io.ctrl.srcUpdate.map(a => a.map(_ := false.B))
+  io.ctrl.predUpdate.map(_ := false.B)
   for (i <- 0 until iqSize) {
     val srcSeq = Seq(uop(i).psrc1, uop(i).psrc2, uop(i).psrc3)
     val srcTypeSeq = Seq(uop(i).ctrl.src1Type, uop(i).ctrl.src2Type, uop(i).ctrl.src3Type)
@@ -496,7 +497,7 @@ class ReservationStationData
     XSDebug(p"${i.U}:|${uop(i).psrc1}:${Hexadecimal(data(i)(0))}|${uop(i).psrc2}:" +
       p"${Hexadecimal(data(i)(1))}|${uop(i).psrc3}:${Hexadecimal(data(i)(2))}|" +
       p"${Binary(io.ctrl.srcUpdate(i).asUInt)}|${uop(i).pdest}:${uop(i).ctrl.rfWen}:" +
-      p"${uop(i).ctrl.fpWen}|${uop(i).roqIdx} |${Hexadecimal(uop(i).cf.pc)}"
-      p"${uop(i).pred} | ${uop(i).predData} |  ${uop(i).is_sfb_shadow}\n")
+      p"${uop(i).ctrl.fpWen}|${uop(i).roqIdx} |${Hexadecimal(uop(i).cf.pc)}" + 
+      p"${uop(i).ppred} | ${uop(i).predData} |  ${uop(i).is_sfb_shadow}\n")
   }
 }

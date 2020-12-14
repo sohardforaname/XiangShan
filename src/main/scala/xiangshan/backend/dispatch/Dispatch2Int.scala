@@ -76,11 +76,13 @@ class Dispatch2Int extends XSModule {
   val (intReadPortSrc, intDynamicExuSrc) = RegfileReadPortGen(intStaticMappedValid, intDynamicMappedValid)
   val intStaticMapped = intStaticIndex.map(i => indexVec(i))
   val intDynamicMapped = intDynamicIndex.map(i => indexVec(i))
+
+  io.readPd <> DontCare
   for (i <- intStaticIndex.indices) {
     val index = WireInit(VecInit(intStaticMapped(i) +: intDynamicMapped))
     io.readRf(2*i  ).addr := io.fromDq(index(intReadPortSrc(i))).bits.psrc1
     io.readRf(2*i+1).addr := io.fromDq(index(intReadPortSrc(i))).bits.psrc2
-    io.readPd(2*i).addr   := io.fromDq(index(intReadPortSrc(i))).bits.ppred
+    io.readPd(i).addr   := io.fromDq(index(intReadPortSrc(i))).bits.ppred
   }
   val readPortIndex = Wire(Vec(exuParameters.IntExuCnt, UInt(log2Ceil(NRIntReadPorts).W)))
   intStaticIndex.zipWithIndex.map({case (index, i) => readPortIndex(index) := (2*i).U})

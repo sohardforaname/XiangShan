@@ -72,6 +72,7 @@ class Rename extends XSModule {
     uop.src3State := DontCare
     uop.ppredState := DontCare
     uop.predData := DontCare
+    uop.ppred := DontCare
     uop.roqIdx := DontCare
     uop.diffTestDebugLrScValid := DontCare
     uop.lqIdx := DontCare
