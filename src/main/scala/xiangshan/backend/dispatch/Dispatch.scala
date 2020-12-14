@@ -50,6 +50,7 @@ class Dispatch extends XSModule {
     // read reg status (busy/ready)
     val intPregRdy = Vec(NRIntReadPorts, Input(Bool()))
     val fpPregRdy = Vec(NRFpReadPorts, Input(Bool()))
+    val pdPregRdy = Vec(NRPdReadPorts, Input(Bool()))
     // to reservation stations
     val numExist = Input(Vec(exuParameters.ExuCnt, UInt(log2Ceil(IssQueSize).W)))
     val enqIQCtrl = Vec(exuParameters.ExuCnt, DecoupledIO(new MicroOp))

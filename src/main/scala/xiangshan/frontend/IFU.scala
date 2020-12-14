@@ -426,6 +426,9 @@ class IFU extends XSModule with HasIFUConst
   io.icacheResp.ready := if4_ready
   io.icacheReq.bits.addr := if1_npc
 
+  val fetchPacketValid = if4_valid && !io.redirect.valid
+  val fetchPacketWire = Wire(new FetchPacket)
+
 
   //sfb process
 
@@ -530,8 +533,6 @@ class IFU extends XSModule with HasIFUConst
   //   ExcitingUtils.addSource(io.fetchPacket.fire && inLoop, "CntFetchFromLoopBuffer", Perf)
   // }
 
-  val fetchPacketValid = if4_valid && !io.redirect.valid
-  val fetchPacketWire = Wire(new FetchPacket)
 
   // io.fetchPacket.valid := if4_valid && !io.redirect.valid
   fetchPacketWire.instrs := if4_pd.instrs
@@ -560,7 +561,7 @@ class IFU extends XSModule with HasIFUConst
   loopBuffer.io.in.valid := io.fetchPacket.fire
 
   //SFB signals
-  (0 until PredictWidth).map {
+  (0 until PredictWidth).map { i =>
     fetchPacketWire.is_sfb_br(i) := if4_sfb_vec(i)
     fetchPacketWire.is_sfb_shadow(i) := if4_sfb_enable && if4_sfb_mask(i)
   }
@@ -597,7 +598,6 @@ class IFU extends XSModule with HasIFUConst
       if3_prevHalfInstr.valid, if3_prevHalfInstr.taken, if3_prevHalfInstr.fetchpc, if3_prevHalfInstr.idx, if3_prevHalfInstr.pc, if3_prevHalfInstr.target, if3_prevHalfInstr.instr, if3_prevHalfInstr.ipf)
     XSDebug("[IF3][if3_prevHalfInstr] v=%d taken=%d fetchpc=%x idx=%d pc=%x tgt=%x instr=%x ipf=%d\n\n",
       if3_prevHalfInstr.valid, if3_prevHalfInstr.taken, if3_prevHalfInstr.fetchpc, if3_prevHalfInstr.idx, if3_prevHalfInstr.pc, if3_prevHalfInstr.target, if3_prevHalfInstr.instr, if3_prevHalfInstr.ipf)
-    if3_GHInfo.debug
     if3_GHInfo.debug("if3")
     XSDebug("[IF4][SFBDebug] shadowMask=%b\n", shadowMask.asUInt)
     XSDebug("[IF4][SFB] enable=%b   idx=%d   mask=%b\n", if4_sfb_enable,if4_sfb_idx,if4_sfb_mask.asUInt)
@@ -622,8 +622,8 @@ class IFU extends XSModule with HasIFUConst
         io.fetchPacket.bits.pd(i).brType,
         io.fetchPacket.bits.pd(i).isCall,
         io.fetchPacket.bits.pd(i).isRet,
-        io.fetchPacket.bits.is_sfb_br,
-        io.fetchPacket.bits.is_sfb_shadow
+        io.fetchPacket.bits.is_sfb_br(i),
+        io.fetchPacket.bits.is_sfb_shadow(i)
       )
     }
   }

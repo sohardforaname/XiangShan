@@ -194,7 +194,7 @@ class Rename extends XSModule {
     }
   }
 
-  XSDebug("current_brq_idx: %d\n",current_brq_idx.asUInt)
+  XSInfo("current_brq_idx: %d\n",current_brq_idx.asUInt)
   
   current_brq_idx := next_brq_idx
 
