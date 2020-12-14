@@ -427,6 +427,9 @@ class ReservationStationData
     val (bpHit, bpHitReg, bpData) = predBypass(pred=ppred, isShadow=is_sfb_shadow)
     when (bpHit && is_sfb_shadow) {  io.ctrl.predUpdate(i) := true.B}
     when (bpHitReg && !(enqPtrReg===i.U && enqEnReg) && shadowReg) { uop(i).predData := bpData(0).asBool } 
+    XSDebug(bpHit, p"predBPHit: (${i.U}) i:${i.U} \n")
+    XSDebug(bpHitReg, p"predBPHitData: (${i.U}) Data:0x${Hexadecimal(bpData)} i:${i.U}\n")
+
   }
 
   // deq
@@ -477,6 +480,7 @@ class ReservationStationData
 
     XSDebug(io.selectedUop.valid, p"SelUop: pc:0x${Hexadecimal(io.selectedUop.bits.cf.pc)}" +
       p" roqIdx:${io.selectedUop.bits.roqIdx} pdest:${io.selectedUop.bits.pdest} " +
+      p" ppred:${io.selectedUop.bits.ppred} predData:${io.selectedUop.bits.predData}" +
       p"rfWen:${io.selectedUop.bits.ctrl.rfWen} fpWen:${io.selectedUop.bits.ctrl.fpWen}\n" )
   }
 
@@ -486,12 +490,13 @@ class ReservationStationData
   XSDebug(true.B, p"out(${io.deq.valid} ${io.deq.ready})\n")
   XSDebug(io.deq.valid, p"Deq(${io.deq.valid} ${io.deq.ready}): deqPtr:${deq} pc:${Hexadecimal(io.deq.bits.uop.cf.pc)}" +
     p" roqIdx:${io.deq.bits.uop.roqIdx} src1:${Hexadecimal(io.deq.bits.src1)} " +
-    p" src2:${Hexadecimal(io.deq.bits.src2)} src3:${Hexadecimal(io.deq.bits.src3)}\n")
-  XSDebug(p"Data:  | src1:data | src2:data | src3:data |hit|pdest:rf:fp| roqIdx | pc\n")
+    p" src2:${Hexadecimal(io.deq.bits.src2)} src3:${Hexadecimal(io.deq.bits.src3)} pred:${Hexadecimal(io.deq.bits.uop.predData)}\n")
+  XSDebug(p"Data:  | src1:data | src2:data | src3:data |hit|pdest:rf:fp| roqIdx | pc | pred| predData | isShadow\n")
   for(i <- data.indices) {
     XSDebug(p"${i.U}:|${uop(i).psrc1}:${Hexadecimal(data(i)(0))}|${uop(i).psrc2}:" +
       p"${Hexadecimal(data(i)(1))}|${uop(i).psrc3}:${Hexadecimal(data(i)(2))}|" +
       p"${Binary(io.ctrl.srcUpdate(i).asUInt)}|${uop(i).pdest}:${uop(i).ctrl.rfWen}:" +
-      p"${uop(i).ctrl.fpWen}|${uop(i).roqIdx} |${Hexadecimal(uop(i).cf.pc)}\n")
+      p"${uop(i).ctrl.fpWen}|${uop(i).roqIdx} |${Hexadecimal(uop(i).cf.pc)}"
+      p"${uop(i).pred} | ${uop(i).predData} |  ${uop(i).is_sfb_shadow}\n")
   }
 }

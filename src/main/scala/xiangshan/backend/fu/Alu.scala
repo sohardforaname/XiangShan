@@ -5,6 +5,7 @@ import chisel3.util._
 import utils.{LookupTree, LookupTreeDefault, SignExt, XSDebug, ZeroExt}
 import xiangshan._
 import xiangshan.backend.ALUOpType
+import utils.XSDebug
 
 class Alu extends FunctionUnit with HasRedirectOut {
 
@@ -78,6 +79,9 @@ class Alu extends FunctionUnit with HasRedirectOut {
                   )
 
   val aluResOut = Mux(ALUOpType.isWordOp(func), SignExt(aluRes(31,0), 64), aluRes)
+
+  XSDebug(io.out.valid,"[ALU-sfb]:pc:%x isbr:%d isShadow:%d pred_yes:%d is_mov:%d lrs1_is_ld:%d\n"
+                uop.cf.pc,is_sfb_br,is_sfb_shadow,pred_yes,is_mov,lrs1_is_lrd)
 
 
   brUpdate := uop.cf.brUpdate
