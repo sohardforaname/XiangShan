@@ -125,6 +125,10 @@ class Brq extends XSModule with HasCircularQueuePtrHelper {
   assert(brCommitCnt+io.bcommit >= deqValid)
   io.inOrderBrInfo.valid := commitValid
   io.inOrderBrInfo.bits := commitEntry.exuOut.brUpdate
+  when(commitEntry.exuOut.uop.is_sfb_br){
+    io.inOrderBrInfo.bits.isMisPred := false.B
+    io.inOrderBrInfo.bits.taken := false.B
+  }
   XSDebug(io.inOrderBrInfo.valid, "inOrderValid: pc=%x\n", io.inOrderBrInfo.bits.pc)
 
   XSDebug(p"headIdx:$headIdx commitIdx:$commitIdx\n")
@@ -159,6 +163,7 @@ class Brq extends XSModule with HasCircularQueuePtrHelper {
   io.out.bits := commitEntry.exuOut
   io.outOfOrderBrInfo.valid := commitValid
   io.outOfOrderBrInfo.bits := commitEntry.exuOut.brUpdate
+  io.outOfOrderBrInfo.bits.taken :=  commitEntry.exuOut.brUpdate.taken && !commitEntry.exuOut.uop.is_sfb_br
 
   when (io.redirect.valid) {
     commitEntry.npc := io.redirect.bits.target
