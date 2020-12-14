@@ -506,6 +506,7 @@ class Roq(numWbPorts: Int) extends XSModule with HasCircularQueuePtrHelper {
       }else{
         skip(i) := (
             debug_exuDebug(idx).isMMIO || 
+            (uop.is_sfb_shadow && uop.predData) ||
             uop.ctrl.fuType === FuType.mou && uop.ctrl.fuOpType === LSUOpType.sc_d ||
             uop.ctrl.fuType === FuType.mou && uop.ctrl.fuOpType === LSUOpType.sc_w
           ) && io.commits(i).valid
