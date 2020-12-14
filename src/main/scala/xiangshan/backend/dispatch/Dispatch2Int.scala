@@ -99,6 +99,7 @@ class Dispatch2Int extends XSModule {
 
     XSInfo(enq.fire(), p"pc 0x${Hexadecimal(enq.bits.cf.pc)} with type ${enq.bits.ctrl.fuType} " +
       p"srcState(${enq.bits.src1State} ${enq.bits.src2State}) " +
+      p"predState(${enq.bits.ppredState}) " +
       p"enters reservation station $i from ${indexVec(i)}\n")
   }
 

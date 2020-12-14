@@ -188,11 +188,13 @@ class PredRegfile extends XSModule {
 	for(r <- io.readPorts){
 	  val addr_reg = RegNext(r.addr)
 	  r.data :=  mem(addr_reg)
+	  XSDebug("Pred regfie read:  addr:%d addr_reg:%d data: %b",r.addr,addr_reg,r.data)
 	}
 
 	for(w <- io.writePorts){
 	  when(w.wen){
 		mem(w.addr) := true.B
+		XSDebug("Pred regfie write:  addr:%d data: %b",w.addr,w.wen)
 	  }
 	}
 
