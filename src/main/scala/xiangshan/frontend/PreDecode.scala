@@ -149,11 +149,20 @@ class PreDecode extends XSModule with HasPdconst with HasIFUConst {
     io.out.pc(i) := instsPC(i)
 
     //for sfb
+    def bankBound(pc:UInt): UInt = {
+      val bank = bankInGroup(pc)
+      val bound = Mux(bank === 0.U, (PredictWidth).U,                   //16
+                  Mux(bank === 1.U ,(PredictWidth - 4).U,               //12
+                  Mux(bank === 2.U ,(PredictWidth - 8).U,               //8
+                                    (PredictWidth - 12).U)))            //4
+      bound
+    }
 
     val branchOffset = Cat(inst(7), inst(30,25), inst(11,8), 0.U(1.W))
-    val offsetIdx = branchOffset(log2Ceil(PredictWidth),1)
+    val offsetIdx = Cat(0.U(1.W),branchOffset(log2Ceil(PredictWidth),1))
     val isBr = (brType === BrType.branch)
-    val isInBound = Mux(isBr, (offsetIdx < (PredictWidth - i).U),false.B) //TODO: FIX ME!!!
+    val branchBound = bankBound(bankAlignedPC)
+    val isInBound = Mux(isBr, (offsetIdx + i.U)(log2Ceil(PredictWidth),0) < branchBound,false.B) //TODO: FIX ME!!!
     val shadowable::has_rs2::Nil = ListLookup(inst,List(SfbConst.F, SfbConst.F),PreDecodeInst.sfbTable)
 
     val sfbOH = Wire(UInt(PredictWidth.W))
@@ -184,6 +193,8 @@ class PreDecode extends XSModule with HasPdconst with HasIFUConst {
       p"isRVC ${Binary(io.out.pd(i).isRVC)}, " +
       p"brType ${Binary(io.out.pd(i).brType)}, " +
       p"isRet ${Binary(io.out.pd(i).isRet)}, " +
+      p"sfbVec ${Binary(io.out.sfbVec(i))}, " +
+      p"sfbShadow ${Binary(io.out.shadowableVec(i))}, " +
       p"isCall ${Binary(io.out.pd(i).isCall)}\n"
     )
   }
