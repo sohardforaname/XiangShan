@@ -25,6 +25,7 @@ class PdReadPort extends XSBundle {
 class PdWritePort extends XSBundle {
   val wen = Input(Bool())
   val addr = Input(UInt(PredWidth.W))
+  val data = Input(Bool())
 }
 
 class Regfile
@@ -195,8 +196,8 @@ class PredRegfile extends XSModule {
 
 	for(w <- io.writePorts){
 	  when(w.wen){
-		mem(w.addr) := true.B
-		XSDebug("Pred regfie write:  addr:%d data: %b\n",w.addr,w.wen)
+		mem(w.addr) := w.data
+		XSDebug("Pred regfie write:  addr:%d data: %b\n",w.addr,w.data )
 	  }
 	}
 
