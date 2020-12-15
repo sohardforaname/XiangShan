@@ -180,6 +180,7 @@ class Roq(numWbPorts: Int) extends XSModule with HasCircularQueuePtrHelper {
       microOp(wbIdx).sqIdx := io.exeWbResults(i).bits.uop.sqIdx
       microOp(wbIdx).ctrl.flushPipe := io.exeWbResults(i).bits.uop.ctrl.flushPipe
       microOp(wbIdx).diffTestDebugLrScValid := io.exeWbResults(i).bits.uop.diffTestDebugLrScValid
+      microOp(wbIdx).predData := io.exeWbResults(i).bits.uop.predData
       debug_exuData(wbIdx) := io.exeWbResults(i).bits.data
       debug_exuDebug(wbIdx) := io.exeWbResults(i).bits.debug
 
@@ -488,36 +489,32 @@ class Roq(numWbPorts: Int) extends XSModule with HasCircularQueuePtrHelper {
     //difftest signals
     val firstValidCommit = deqPtr + PriorityMux(validCommit, VecInit(List.tabulate(CommitWidth)(_.U)))
 
-    val skip = Wire(Vec(CommitWidth, Bool()))
+    val instType = Wire(Vec(CommitWidth, UInt(32.W)))
     val wen = Wire(Vec(CommitWidth, Bool()))
     val wdata = Wire(Vec(CommitWidth, UInt(XLEN.W)))
     val wdst = Wire(Vec(CommitWidth, UInt(32.W)))
     val diffTestDebugLrScValid = Wire(Vec(CommitWidth, Bool()))
     val wpc = Wire(Vec(CommitWidth, UInt(XLEN.W)))
     val trapVec = Wire(Vec(CommitWidth, Bool()))
-    val isRVC = Wire(Vec(CommitWidth, Bool()))
-    for(i <- 0 until CommitWidth){
+    for (i <- 0 until CommitWidth) {
       // io.commits(i).valid
       val idx = deqPtr+i.U
       val uop = io.commits(i).bits.uop
-      val DifftestSkipSC = false
-      if(!DifftestSkipSC){
-        skip(i) := debug_exuDebug(idx).isMMIO && io.commits(i).valid
-      }else{
-        skip(i) := (
-            debug_exuDebug(idx).isMMIO || 
-            (uop.is_sfb_shadow && uop.predData) ||
-            uop.ctrl.fuType === FuType.mou && uop.ctrl.fuOpType === LSUOpType.sc_d ||
-            uop.ctrl.fuType === FuType.mou && uop.ctrl.fuOpType === LSUOpType.sc_w
-          ) && io.commits(i).valid
-      }
+
+      val isMMIO = debug_exuDebug(idx).isMMIO && io.commits(i).valid
+      val isRVC  = uop.cf.brUpdate.pd.isRVC
+      val isSC   = uop.ctrl.fuType === FuType.mou &&
+        (uop.ctrl.fuOpType === LSUOpType.sc_d || uop.ctrl.fuOpType === LSUOpType.sc_w)
+      val isSFB  = uop.is_sfb_shadow && uop.predData
+      val instTypeList = Seq(isMMIO, isRVC, isSC, isSFB).reverse
+
+      instType(i) := Mux(io.commits(i).valid, Cat(instTypeList), 0.U)
       wen(i) := io.commits(i).valid && uop.ctrl.rfWen && uop.ctrl.ldest =/= 0.U
       wdata(i) := debug_exuData(idx)
       wdst(i) := uop.ctrl.ldest
       diffTestDebugLrScValid(i) := uop.diffTestDebugLrScValid
       wpc(i) := SignExt(uop.cf.pc, XLEN)
       trapVec(i) := io.commits(i).valid && (state===s_idle) && uop.ctrl.isXSTrap
-      isRVC(i) := uop.cf.brUpdate.pd.isRVC
     }
 
     val scFailed = !diffTestDebugLrScValid(0) && 
@@ -535,8 +532,7 @@ class Roq(numWbPorts: Int) extends XSModule with HasCircularQueuePtrHelper {
     ExcitingUtils.addSource(RegNext(retireCounterFix), "difftestCommit", ExcitingUtils.Debug)
     ExcitingUtils.addSource(RegNext(retirePCFix), "difftestThisPC", ExcitingUtils.Debug)//first valid PC
     ExcitingUtils.addSource(RegNext(retireInstFix), "difftestThisINST", ExcitingUtils.Debug)//first valid inst
-    ExcitingUtils.addSource(RegNext(skip.asUInt), "difftestSkip", ExcitingUtils.Debug)
-    ExcitingUtils.addSource(RegNext(isRVC.asUInt), "difftestIsRVC", ExcitingUtils.Debug)
+    ExcitingUtils.addSource(RegNext(instType), "difftestInstType", ExcitingUtils.Debug)
     ExcitingUtils.addSource(RegNext(wen.asUInt), "difftestWen", ExcitingUtils.Debug)
     ExcitingUtils.addSource(RegNext(wpc), "difftestWpc", ExcitingUtils.Debug)
     ExcitingUtils.addSource(RegNext(wdata), "difftestWdata", ExcitingUtils.Debug)

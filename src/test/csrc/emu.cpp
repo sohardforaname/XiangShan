@@ -165,16 +165,17 @@ inline void Emulator::read_emu_regs(uint64_t *r) {
   r[DIFFTEST_MODE]    = dut_ptr->io_difftest_priviledgeMode;
 }
 
-inline void Emulator::read_wb_info(uint64_t *wpc, uint64_t *wdata, uint32_t *wdst) {
+inline void Emulator::read_wb_info(uint32_t *inst_type, uint64_t *wpc, uint64_t *wdata, uint32_t *wdst) {
+#define dut_ptr_inst_type(x)  inst_type[x] = dut_ptr->io_difftest_instType_##x
 #define dut_ptr_wpc(x)  wpc[x] = dut_ptr->io_difftest_wpc_##x
 #define dut_ptr_wdata(x) wdata[x] = dut_ptr->io_difftest_wdata_##x
 #define dut_ptr_wdst(x)  wdst[x] = dut_ptr->io_difftest_wdst_##x
-  dut_ptr_wpc(0); dut_ptr_wdata(0); dut_ptr_wdst(0); 
-  dut_ptr_wpc(1); dut_ptr_wdata(1); dut_ptr_wdst(1); 
-  dut_ptr_wpc(2); dut_ptr_wdata(2); dut_ptr_wdst(2); 
-  dut_ptr_wpc(3); dut_ptr_wdata(3); dut_ptr_wdst(3); 
-  dut_ptr_wpc(4); dut_ptr_wdata(4); dut_ptr_wdst(4); 
-  dut_ptr_wpc(5); dut_ptr_wdata(5); dut_ptr_wdst(5); 
+  dut_ptr_inst_type(0); dut_ptr_wpc(0); dut_ptr_wdata(0); dut_ptr_wdst(0);
+  dut_ptr_inst_type(1); dut_ptr_wpc(1); dut_ptr_wdata(1); dut_ptr_wdst(1);
+  dut_ptr_inst_type(2); dut_ptr_wpc(2); dut_ptr_wdata(2); dut_ptr_wdst(2);
+  dut_ptr_inst_type(3); dut_ptr_wpc(3); dut_ptr_wdata(3); dut_ptr_wdst(3);
+  dut_ptr_inst_type(4); dut_ptr_wpc(4); dut_ptr_wdata(4); dut_ptr_wdst(4);
+  dut_ptr_inst_type(5); dut_ptr_wpc(5); dut_ptr_wdata(5); dut_ptr_wdst(5);
 }
 
 inline void Emulator::reset_ncycles(size_t cycles) {
@@ -233,12 +234,14 @@ uint64_t Emulator::execute(uint64_t max_cycle, uint64_t max_instr) {
   uint64_t instr_left_last_cycle = max_instr;
   const int stuck_limit = 2000;
 
+  uint32_t inst_type[DIFFTEST_WIDTH];
   uint32_t wdst[DIFFTEST_WIDTH];
   uint64_t wdata[DIFFTEST_WIDTH];
   uint64_t wpc[DIFFTEST_WIDTH];
   uint64_t reg[DIFFTEST_NR_REG];
   DiffState diff;
   diff.reg_scala = reg;
+  diff.inst_type = inst_type;
   diff.wpc = wpc;
   diff.wdata = wdata;
   diff.wdst = wdst;
@@ -275,12 +278,10 @@ uint64_t Emulator::execute(uint64_t max_cycle, uint64_t max_instr) {
     // difftest
     if (dut_ptr->io_difftest_commit && hascommit) {
       read_emu_regs(reg);
-      read_wb_info(wpc, wdata, wdst);
+      read_wb_info(inst_type, wpc, wdata, wdst);
 
       diff.commit = dut_ptr->io_difftest_commit;
       diff.this_inst = dut_ptr->io_difftest_thisINST;
-      diff.skip = dut_ptr->io_difftest_skip;
-      diff.isRVC = dut_ptr->io_difftest_isRVC;
       diff.wen = dut_ptr->io_difftest_wen;
       diff.intrNO = dut_ptr->io_difftest_intrNO;
       diff.cause = dut_ptr->io_difftest_cause;

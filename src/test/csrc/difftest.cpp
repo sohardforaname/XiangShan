@@ -177,25 +177,29 @@ int difftest_step(DiffState *s) {
   }
   else {
     assert(s->commit > 0 && s->commit <= 6);
-    for(int i = 0; i < s->commit; i++){
+    for (int i = 0; i < s->commit; i++) {
       pc_wb_queue[wb_pointer] = s->wpc[i];
       wen_wb_queue[wb_pointer] = selectBit(s->wen, i);
       wdst_wb_queue[wb_pointer] = s->wdst[i];
       wdata_wb_queue[wb_pointer] = s->wdata[i];
       wb_pointer = (wb_pointer+1) % DEBUG_WB_TRACE_SIZE;
-      if(selectBit(s->skip, i)){
+      if (selectBit(s->inst_type[i], INST_TYPE_SFB)) {
+
+      }
+      else if (selectBit(s->inst_type[i], INST_TYPE_MMIO)) {
         // MMIO accessing should not be a branch or jump, just +2/+4 to get the next pc
         // printf("SKIP %d\n", i);
         // to skip the checking of an instruction, just copy the reg state to reference design
         ref_difftest_getregs(&ref_r);
-        ref_r[DIFFTEST_THIS_PC] += selectBit(s->isRVC, i) ? 2 : 4;
+        ref_r[DIFFTEST_THIS_PC] += selectBit(s->inst_type[i], INST_TYPE_RVC) ? 2 : 4;
         if(selectBit(s->wen, i)){
           if(s->wdst[i] != 0){
             ref_r[s->wdst[i]] = s->wdata[i];
           }
         }
         ref_difftest_setregs(ref_r);
-      }else{
+      }
+      else {
         // single step exec
         // IPF, LPF, SPF
         if(s->cause == 12 || s->cause == 13 || s->cause == 15){
@@ -205,7 +209,8 @@ int difftest_step(DiffState *s) {
           ds.mtval = s->reg_scala[DIFFTEST_MTVAL];
           ds.stval = s->reg_scala[DIFFTEST_STVAL];
           ref_disambiguate_exec(&ds);
-        }else{
+        }
+        else {
           ref_difftest_exec(1);
         }
       }

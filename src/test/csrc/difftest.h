@@ -47,13 +47,19 @@ struct SyncState {
   uint64_t lrscAddr;
 };
 
+enum {
+  INST_TYPE_MMIO = 0,
+  INST_TYPE_RVC,
+  INST_TYPE_SC,
+  INST_TYPE_SFB
+};
+
 struct DiffState {
   // Regs and mode for single step difftest
   int commit;
   uint64_t *reg_scala;
   uint32_t this_inst;
-  int skip;
-  int isRVC;
+  uint32_t *inst_type;
   uint64_t *wpc;
   uint64_t *wdata;
   uint32_t *wdst;

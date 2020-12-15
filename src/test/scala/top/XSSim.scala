@@ -18,12 +18,11 @@ class DiffTestIO extends XSBundle {
   val commit = Output(UInt(32.W))
   val thisPC = Output(UInt(XLEN.W))
   val thisINST = Output(UInt(32.W))
-  val skip = Output(UInt(32.W))
+  val instType = Output(Vec(CommitWidth, UInt(32.W)))
   val wen = Output(UInt(32.W))
-  val wdata = Output(Vec(CommitWidth, UInt(XLEN.W))) // set difftest width to 6
-  val wdst = Output(Vec(CommitWidth, UInt(32.W))) // set difftest width to 6
-  val wpc = Output(Vec(CommitWidth, UInt(XLEN.W))) // set difftest width to 6
-  val isRVC = Output(UInt(32.W))
+  val wdata = Output(Vec(CommitWidth, UInt(XLEN.W)))
+  val wdst = Output(Vec(CommitWidth, UInt(32.W)))
+  val wpc = Output(Vec(CommitWidth, UInt(XLEN.W)))
   val intrNO = Output(UInt(64.W))
   val cause = Output(UInt(64.W))
 
@@ -126,8 +125,7 @@ class XSSimSoC(axiSim: Boolean)(implicit p: config.Parameters) extends LazyModul
       ExcitingUtils.addSink(difftest.commit, "difftestCommit", Debug)
       ExcitingUtils.addSink(difftest.thisPC, "difftestThisPC", Debug)
       ExcitingUtils.addSink(difftest.thisINST, "difftestThisINST", Debug)
-      ExcitingUtils.addSink(difftest.skip, "difftestSkip", Debug)
-      ExcitingUtils.addSink(difftest.isRVC, "difftestIsRVC", Debug)
+      ExcitingUtils.addSink(difftest.instType, "difftestInstType", Debug)
       ExcitingUtils.addSink(difftest.wen, "difftestWen", Debug)
       ExcitingUtils.addSink(difftest.wdata, "difftestWdata", Debug)
       ExcitingUtils.addSink(difftest.wdst, "difftestWdst", Debug)
