@@ -231,7 +231,8 @@ class IntegerBlock
 
   predRf.io.writePorts.zip(intWbArbiter.io.out).foreach{
     case (rf, wb) =>
-      rf.wen := wb.valid && wb.bits.uop.is_sfb_br && wb.bits.brUpdate.taken
+      rf.wen := wb.valid && wb.bits.uop.is_sfb_br
       rf.addr := wb.bits.uop.pdest
+      rf.data := wb.bits.data(0).asBool
   }
 }
