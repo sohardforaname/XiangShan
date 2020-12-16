@@ -404,6 +404,8 @@ class DecodeUnit extends XSModule with DecodeUnitConstants {
 
   cs.lrs1_is_lrd := ctrl_flow.is_sfb_shadow
 
+  cf_ctrl.ctrl := cs
+
   def isInstrI(instr: UInt): Bool = {
     Array(
       BitPat("b00000"), // LOAD
@@ -416,16 +418,14 @@ class DecodeUnit extends XSModule with DecodeUnitConstants {
   }
 
   when (ctrl_flow.is_sfb_shadow && isInstrI(ctrl_flow.instr)) {
-    cs.src2Type := SrcType.reg
-    cs.lsrc2 := cs.ldest
-    cs.lrs1_is_lrd := false.B
+    cf_ctrl.ctrl.src2Type := SrcType.reg
+    cf_ctrl.ctrl.lsrc2 := cs.ldest
+    cf_ctrl.ctrl.lrs1_is_lrd := false.B
   }.elsewhen (ctrl_flow.is_sfb_shadow && cs.fuOpType === ALUOpType.add && cs.fuType === FuType.alu && cs.lsrc1 === 0.U) {
-    cs.fuOpType := ALUOpType.mov
-    cs.lsrc1 := cs.ldest
-    cs.lrs1_is_lrd := true.B
+    cf_ctrl.ctrl.fuOpType := ALUOpType.mov
+    cf_ctrl.ctrl.lsrc1 := cs.ldest
+    cf_ctrl.ctrl.lrs1_is_lrd := true.B
   }
-
-  cf_ctrl.ctrl := cs
 
   // fix ret and call
   when (cs.fuType === FuType.jmp) {
