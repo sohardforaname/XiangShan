@@ -403,13 +403,25 @@ class DecodeUnit extends XSModule with DecodeUnitConstants {
   cs.imm := SignExt(Imm32Gen(cs.selImm, ctrl_flow.instr), XLEN)
 
   cs.lrs1_is_lrd := ctrl_flow.is_sfb_shadow
-  when (ctrl_flow.is_sfb_shadow && ??) {
+
+  def isInstrI(instr: UInt): Bool = {
+    Array(
+      BitPat("b00000"), // LOAD
+      BitPat("b00100"), // OP-IMM
+      BitPat("b00110"), // OP-IMM-32
+      BitPat("b11001")  // JALR
+    ).map( _ === instr(6, 2) ).reduce( _ || _ ) ||
+    (instr(6, 2) === BitPat("b01011") && instr(31, 27) === BitPat("b00010")) || // AMO: LR_D / LR_W
+    (instr(6, 2) === BitPat("b11100") && instr =/= BitPat("b0001000_00101_00000_000_00000_1110011")) // SYSTEM except WFI
+  }
+
+  when (ctrl_flow.is_sfb_shadow && isInstrI(ctrl_flow.instr)) {
     cs.src2Type := SrcType.reg
-    cs.lsrc2 := rfDest
+    cs.lsrc2 := cs.ldest
     cs.lrs1_is_lrd := false.B
-  }.elsewhen (ctrl_flow.is_sfb_shadow && fuOpType === ALUOpType.add && fuType === FuType.alu && rfSrc1 === 0.U) {
+  }.elsewhen (ctrl_flow.is_sfb_shadow && cs.fuOpType === ALUOpType.add && cs.fuType === FuType.alu && cs.lsrc1 === 0.U) {
     cs.fuOpType := ALUOpType.mov
-    cs.lsrc1 := rfDest
+    cs.lsrc1 := cs.ldest
     cs.lrs1_is_lrd := true.B
   }
 
