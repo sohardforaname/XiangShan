@@ -90,7 +90,7 @@ class PreDecode extends XSModule with HasPdconst with HasIFUConst {
 
   val data = io.in.data
   val mask = io.in.mask
-  
+
   val validCount = PopCount(mask)
   val bankAlignedPC = bankAligned(io.in.pc)
   val bankOffset = offsetInBank(io.in.pc)
@@ -125,7 +125,7 @@ class PreDecode extends XSModule with HasPdconst with HasIFUConst {
     val currentRVC = isRVC(insts(i))
 
     val lastIsValidEnd = if (i == 0) { !io.prev.valid } else { instsEndMask(i-1) || isFirstInPacket }
-    
+
     inst := Mux(io.prev.valid && i.U === 0.U, Cat(rawInsts(i)(15,0), io.prev.bits), rawInsts(i))
 
     validStart := lastIsValidEnd && !(isLastInPacket && !currentRVC)
@@ -168,7 +168,7 @@ class PreDecode extends XSModule with HasPdconst with HasIFUConst {
     val sfbOH = Wire(UInt(PredictWidth.W))
     val tgtOH = Wire(UInt(PredictWidth.W))
     sfbOH  := UIntToOH(i.U)
-    tgtOH  := UIntToOH((i.U + offsetIdx)(log2Ceil(PredictWidth)-1,0)) 
+    tgtOH  := UIntToOH((i.U + offsetIdx)(log2Ceil(PredictWidth)-1,0))
 
     io.out.rangeMask(i) := ~MaskLower(sfbOH) & ~MaskUpper(tgtOH)
     io.out.sfbVec(i) := isBr && !inst(31) && branchOffset =/= 0.U && isInBound && instsMask(i)  //TODO: better parameterizing
@@ -177,7 +177,7 @@ class PreDecode extends XSModule with HasPdconst with HasIFUConst {
           getRs1(inst) === getRd(inst) ||
           (inst === PreDecodeInst.ADD) && getRs1(inst) === 0.U
     )
-    
+
     if (i == bankWidth-1)    { lastHalf(0) := currentLastHalf }
     if (i == PredictWidth-1) { lastHalf(1) := currentLastHalf }
   }
@@ -204,5 +204,3 @@ class PreDecode extends XSModule with HasPdconst with HasIFUConst {
   }
 
 }
-
-     

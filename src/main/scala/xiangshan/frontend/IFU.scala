@@ -414,22 +414,22 @@ class IFU extends XSModule with HasIFUConst
   })
 
   val if4_sfb_vec = VecInit((0 until PredictWidth).map{  i =>
-    EnableSFB.B && 
-    ((~sfb_pk_check(i) === 0.U) && 
+    EnableSFB.B &&
+    ((~sfb_pk_check(i) === 0.U) &&
      pd_sfb_vec(i) &&
      if4_valid
     )
-  })    
+  })
 
   //this fetch packet has sfb
-  val if4_sfb_enable = if4_sfb_vec.reduce(_||_)      
-  //sfb index in the fetch packet (0-15)       
-  val if4_sfb_idx    = PriorityEncoder(if4_sfb_vec)  
+  val if4_sfb_enable = if4_sfb_vec.reduce(_||_)
+  //sfb index in the fetch packet (0-15)
+  val if4_sfb_idx    = PriorityEncoder(if4_sfb_vec)
   //sfb range mask
   //e.g:   if 2 is sfb and the target is 7
   //       the mask is:    0000_0000_0111_1000
-  val if4_sfb_mask   = pd_range_mask(if4_sfb_idx) & fetchPacketWire.mask                           
-  
+  val if4_sfb_mask   = pd_range_mask(if4_sfb_idx) & fetchPacketWire.mask
+
 
   // when(if4_bp.taken) {
   //   when(if4_bp.saveHalfRVI) {

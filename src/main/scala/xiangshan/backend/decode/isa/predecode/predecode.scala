@@ -101,6 +101,6 @@ object PreDecodeInst{
       OR          -> List(SfbConst.T, SfbConst.T),
       XOR         -> List(SfbConst.T, SfbConst.T),
       SRA         -> List(SfbConst.T, SfbConst.T),
-      SRL         -> List(SfbConst.T, SfbConst.T)  
+      SRL         -> List(SfbConst.T, SfbConst.T)
   )
 }

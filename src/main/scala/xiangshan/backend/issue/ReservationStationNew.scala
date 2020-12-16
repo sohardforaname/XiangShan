@@ -427,7 +427,7 @@ class ReservationStationData
     //deal with sfb
     val (bpHit, bpHitReg, bpData) = predBypass(pred=ppred, isShadow=is_sfb_shadow)
     when (bpHit && is_sfb_shadow) {  io.ctrl.predUpdate(i) := true.B}
-    when (bpHitReg && !(enqPtrReg===i.U && enqEnReg) && shadowReg) { uop(i).predData := bpData(0).asBool } 
+    when (bpHitReg && !(enqPtrReg===i.U && enqEnReg) && shadowReg) { uop(i).predData := bpData(0).asBool }
     XSDebug(bpHit, p"predBPHit: (${i.U}) i:${i.U} \n")
     XSDebug(bpHitReg, p"predBPHitData: (${i.U}) Data:0x${Hexadecimal(bpData)} i:${i.U}\n")
 
@@ -497,7 +497,7 @@ class ReservationStationData
     XSDebug(p"${i.U}:|${uop(i).psrc1}:${Hexadecimal(data(i)(0))}|${uop(i).psrc2}:" +
       p"${Hexadecimal(data(i)(1))}|${uop(i).psrc3}:${Hexadecimal(data(i)(2))}|" +
       p"${Binary(io.ctrl.srcUpdate(i).asUInt)}|${uop(i).pdest}:${uop(i).ctrl.rfWen}:" +
-      p"${uop(i).ctrl.fpWen}|${uop(i).roqIdx} |${Hexadecimal(uop(i).cf.pc)}" + 
+      p"${uop(i).ctrl.fpWen}|${uop(i).roqIdx} |${Hexadecimal(uop(i).cf.pc)}" +
       p"${uop(i).ppred} | ${uop(i).predData} |  ${uop(i).is_sfb_shadow}\n")
   }
 }

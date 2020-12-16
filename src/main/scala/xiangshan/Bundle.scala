@@ -98,7 +98,7 @@ class BranchPrediction extends XSBundle with HasIFUConst {
   def lastHalfRVIIdx = Mux(firstBankHasHalfRVI, (bankWidth-1).U, (PredictWidth-1).U)
   // should not be used if not lastHalfRVITaken
   def lastHalfRVITarget = Mux(firstBankHasHalfRVI, targets(bankWidth-1), targets(PredictWidth-1))
-  
+
   def realTakens  = takens  & lastHalfRVIClearMask
   def realBrMask  = brMask  & lastHalfRVIClearMask
   def realJalMask = jalMask & lastHalfRVIClearMask
@@ -212,7 +212,7 @@ class CtrlSignals extends XSBundle {
   def decode(inst: UInt, table: Iterable[(BitPat, List[BitPat])]) = {
     val decoder = freechips.rocketchip.rocket.DecodeLogic(inst, XDecode.decodeDefault, table)
     val signals =
-      Seq(src1Type, src2Type, src3Type, fuType, fuOpType, rfWen, fpWen, 
+      Seq(src1Type, src2Type, src3Type, fuType, fuOpType, rfWen, fpWen,
           isXSTrap, noSpecExec, blockBackward, flushPipe, isRVF, selImm)
     signals zip decoder map { case(s, d) => s := d }
     commitType := DontCare
@@ -226,8 +226,8 @@ class CfCtrl extends XSBundle {
   val brTag = new BrqPtr
 
   //sfb signals
-  def is_sfb_br     = cf.is_sfb_br     
-  def is_sfb_shadow = cf.is_sfb_shadow 
+  def is_sfb_br     = cf.is_sfb_br
+  def is_sfb_shadow = cf.is_sfb_shadow
 }
 
 // Load / Store Index
@@ -360,7 +360,7 @@ class TlbCsrBundle extends XSBundle {
   }
 
   override def toPrintable: Printable = {
-    p"Satp mode:0x${Hexadecimal(satp.mode)} asid:0x${Hexadecimal(satp.asid)} ppn:0x${Hexadecimal(satp.ppn)} " + 
+    p"Satp mode:0x${Hexadecimal(satp.mode)} asid:0x${Hexadecimal(satp.asid)} ppn:0x${Hexadecimal(satp.ppn)} " +
     p"Priv mxr:${priv.mxr} sum:${priv.sum} imode:${priv.imode} dmode:${priv.dmode}"
   }
 }

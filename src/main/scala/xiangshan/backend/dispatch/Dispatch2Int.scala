@@ -136,7 +136,7 @@ class Dispatch2Int extends XSModule {
 
     io.enqIQCtrl(i).bits.predData := Mux(uopReg(i).is_sfb_shadow,
       io.readPd(readPortIndexReg(i)).data, false.B)
-    
+
 
     XSDebug(dataValidRegDebug(i),
       p"pc 0x${Hexadecimal(uopReg(i).cf.pc)} reads operands from " +

@@ -183,7 +183,7 @@ class Rename extends XSModule {
     uops(i).psrc2 := Mux(uops(i).ctrl.src2Type === SrcType.reg, intPhySrcVec(1), fpPhySrcVec(1))
     uops(i).psrc3 := fpPhySrcVec(2)
     uops(i).old_pdest := Mux(uops(i).ctrl.rfWen, intOldPdest, fpOldPdest)
-  
+
     //SFB Renaming
     //usging brq index to rename every sfb
     //register the sfb index to give the shadow instructions a ppred to listen
@@ -199,7 +199,7 @@ class Rename extends XSModule {
   }
 
   XSInfo("current_brq_idx: %d\n",current_brq_idx.asUInt)
-  
+
   current_brq_idx := next_brq_idx
 
 
