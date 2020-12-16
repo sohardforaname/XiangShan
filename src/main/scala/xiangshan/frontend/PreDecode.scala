@@ -162,7 +162,7 @@ class PreDecode extends XSModule with HasPdconst with HasIFUConst {
     val offsetIdx = Cat(0.U(1.W),branchOffset(log2Ceil(PredictWidth),1))
     val isBr = (brType === BrType.branch)
     val branchBound = bankBound(bankAlignedPC)
-    val isInBound = Mux(isBr, (offsetIdx + i.U)(log2Ceil(PredictWidth),0) < branchBound,false.B) //TODO: FIX ME!!!
+    val isInBound = (offsetIdx + i.U)(log2Ceil(PredictWidth), 0) < branchBound && branchOffset(11, log2Ceil(PredictWidth)+1) === 0.U
     val shadowable::has_rs2::Nil = ListLookup(inst,List(SfbConst.F, SfbConst.F),PreDecodeInst.sfbTable)
 
     val sfbOH = Wire(UInt(PredictWidth.W))
