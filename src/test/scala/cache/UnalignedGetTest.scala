@@ -9,6 +9,7 @@ import chiseltest._
 import chisel3.experimental.BundleLiterals._
 import firrtl.stage.RunFirrtlTransformAnnotation
 import chiseltest.ChiselScalatestTester
+import chiseltest.legacy.backends.verilator.VerilatorFlags
 import device.AXI4RAM
 import freechips.rocketchip.amba.axi4.AXI4UserYanker
 import freechips.rocketchip.diplomacy.{AddressSet, LazyModule, LazyModuleImp, IdRange}
@@ -176,14 +177,14 @@ class GetGeneratorImp(outer: GetGenerator) extends LazyModuleImp(outer)
 
 case object UnalignedGetTestKey extends Field[Long]
 
-class UnalignedGetTestTopIO extends Bundle {
-  val in = Flipped(DecoupledIO(new Bundle() {
+class UnalignedGetTestTopIO extends XSBundle {
+  val in = Flipped(DecoupledIO(new XSBundle() {
     val wdata = Input(UInt(512.W))
-    val waddr = Input(UInt(20.W))
-    val raddr = Input(UInt(20.W))
+    val waddr = Input(UInt(PAddrBits.W))
+    val raddr = Input(UInt(PAddrBits.W))
     val rsize  = Input(UInt(8.W))
   }))
-  val out = DecoupledIO(new Bundle() {
+  val out = DecoupledIO(new XSBundle() {
     val rdata = Output(UInt(512.W))
   })
 }
@@ -407,6 +408,7 @@ class UnalignedGetTest extends AnyFlatSpec with ChiselScalatestTester with Match
 
   val annos = Seq(
     VerilatorBackendAnnotation,
+    VerilatorFlags(Seq("--output-split 5000", "--output-split-cfuncs 5000")),
     RunFirrtlTransformAnnotation(new PrintModuleName)
   )
 
@@ -429,7 +431,6 @@ class UnalignedGetTest extends AnyFlatSpec with ChiselScalatestTester with Match
         val mem_size = 128 * 1024 * 1024
         val block_size = 64
         val nblocks = mem_size / block_size
-        // val nblocks = 100
         for(i <- 0 until nblocks) {
           // we do not support l1plus flush for now
           // so we could only scan the whole memory,
@@ -437,7 +438,7 @@ class UnalignedGetTest extends AnyFlatSpec with ChiselScalatestTester with Match
           // if we rewrite the same block multiple times
           // GetGenerator could not give correct data since it hasn't been flushed
           // val addr = Random.nextInt(0xfffff) & 0xffe00 // align to block size
-          val waddr = i * block_size
+          val waddr = i * block_size + 0x80000000L
           val words = (0 until 8) map { _ =>
             (BigInt(Random.nextLong() & 0x7fffffffffffffffL))
           }
