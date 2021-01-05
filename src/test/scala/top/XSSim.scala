@@ -48,6 +48,11 @@ class DiffTestIO extends XSBundle {
   val medeleg = Output(UInt(64.W))
 
   val scFailed = Output(Bool())
+
+  val storeCommit = Output(UInt(2.W))
+  val storeAddr   = Output(Vec(2, UInt(64.W)))
+  val storeData   = Output(Vec(2, UInt(64.W)))
+  val storeMask   = Output(Vec(2, UInt(8.W)))
 }
 
 class LogCtrlIO extends Bundle {
@@ -85,7 +90,7 @@ class XSSimSoC(axiSim: Boolean)(implicit p: config.Parameters) extends LazyModul
     else
       LazyModule(new AXI4RAM(
         dramRange,
-        memByte = 128 * 1024 * 1024,
+        memByte = 64L * 1024 * 1024 * 1024,
         useBlackBox = true,
         beatBytes = L3BusWidth / 8
       )).node
@@ -154,6 +159,10 @@ class XSSimSoC(axiSim: Boolean)(implicit p: config.Parameters) extends LazyModul
       ExcitingUtils.addSink(difftest.mideleg, "difftestMideleg", Debug)
       ExcitingUtils.addSink(difftest.medeleg, "difftestMedeleg", Debug)
       ExcitingUtils.addSink(difftest.scFailed, "difftestScFailed", Debug)
+      ExcitingUtils.addSink(difftest.storeCommit, "difftestStoreCommit", Debug)
+      ExcitingUtils.addSink(difftest.storeAddr, "difftestStoreAddr", Debug)
+      ExcitingUtils.addSink(difftest.storeData, "difftestStoreData", Debug)
+      ExcitingUtils.addSink(difftest.storeMask, "difftestStoreMask", Debug)
     }
 
     // BoringUtils.addSink(difftest.lrscAddr, "difftestLrscAddr")

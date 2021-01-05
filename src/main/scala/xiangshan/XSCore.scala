@@ -40,8 +40,8 @@ case class XSCoreParameters
   EnableBPU: Boolean = true,
   EnableBPD: Boolean = true,
   EnableRAS: Boolean = true,
-  EnableLB: Boolean = true,
-  EnableLoop: Boolean = true,
+  EnableLB: Boolean = false,
+  EnableLoop: Boolean = false,
   EnableSC: Boolean = false,
   HistoryLength: Int = 64,
   BtbSize: Int = 2048,
@@ -55,27 +55,23 @@ case class XSCoreParameters
   DecodeWidth: Int = 6,
   RenameWidth: Int = 6,
   CommitWidth: Int = 6,
-  BrqSize: Int = 12,
-  IssQueSize: Int = 8,
-  NRPhyRegs: Int = 128,
+  BrqSize: Int = 32,
+  IssQueSize: Int = 12,
+  NRPhyRegs: Int = 160,
   NRIntReadPorts: Int = 14,
   NRIntWritePorts: Int = 8,
   NRFpReadPorts: Int = 14,
   NRFpWritePorts: Int = 8,
-  LoadQueueSize: Int = 12,
-  StoreQueueSize: Int = 10,
-  RoqSize: Int = 32,
+  LoadQueueSize: Int = 64,
+  StoreQueueSize: Int = 48,
+  RoqSize: Int = 192,
   dpParams: DispatchParameters = DispatchParameters(
-    DqEnqWidth = 4,
     IntDqSize = 24,
-    FpDqSize = 16,
-    LsDqSize = 16,
+    FpDqSize = 24,
+    LsDqSize = 24,
     IntDqDeqWidth = 4,
     FpDqDeqWidth = 4,
-    LsDqDeqWidth = 4,
-    IntDqReplayWidth = 4,
-    FpDqReplayWidth = 4,
-    LsDqReplayWidth = 4
+    LsDqDeqWidth = 4
   ),
   exuParameters: ExuParameters = ExuParameters(
     JmpCnt = 1,
@@ -154,7 +150,6 @@ trait HasXSParameter {
   val LoadQueueSize = core.LoadQueueSize
   val StoreQueueSize = core.StoreQueueSize
   val dpParams = core.dpParams
-  val ReplayWidth = dpParams.IntDqReplayWidth + dpParams.FpDqReplayWidth + dpParams.LsDqReplayWidth
   val exuParameters = core.exuParameters
   val NRIntReadPorts = core.NRIntReadPorts
   val NRIntWritePorts = core.NRIntWritePorts
@@ -281,7 +276,7 @@ object AddressSpace extends HasXSParameter {
 
 class XSCore()(implicit p: config.Parameters) extends LazyModule with HasXSParameter {
 
-  // inner nodes
+  // outer facing nodes
   val dcache = LazyModule(new DCache())
   val uncache = LazyModule(new Uncache())
   val l1pluscache = LazyModule(new L1plusCache())
@@ -379,10 +374,6 @@ class XSCoreImp(outer: XSCore) extends LazyModuleImp(outer)
   val l1plusprefetcher = Module(new L1IplusPrefetcher(enable = EnableIPrefetcher))
 
   frontend.io.backend <> ctrlBlock.io.frontend
-  frontend.io.icacheResp <> icache.io.resp
-  frontend.io.icacheToTlb <> icache.io.tlb
-  icache.io.req <> frontend.io.icacheReq
-  icache.io.flush <> frontend.io.icacheFlush
   frontend.io.sfence <> integerBlock.io.fenceio.sfence
   frontend.io.tlbCsr <> integerBlock.io.csrio.tlb
 
@@ -456,7 +447,6 @@ class XSCoreImp(outer: XSCore) extends LazyModuleImp(outer)
 
   memBlock.io.lsqio.commits <> ctrlBlock.io.roqio.commits
   memBlock.io.lsqio.roqDeqPtr <> ctrlBlock.io.roqio.roqDeqPtr
-  memBlock.io.lsqio.oldestStore <> ctrlBlock.io.oldestStore
   memBlock.io.lsqio.exceptionAddr.lsIdx.lqIdx := ctrlBlock.io.roqio.exception.bits.lqIdx
   memBlock.io.lsqio.exceptionAddr.lsIdx.sqIdx := ctrlBlock.io.roqio.exception.bits.sqIdx
   memBlock.io.lsqio.exceptionAddr.isStore := CommitType.lsInstIsStore(ctrlBlock.io.roqio.exception.bits.ctrl.commitType)

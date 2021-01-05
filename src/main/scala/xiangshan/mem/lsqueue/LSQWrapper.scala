@@ -28,6 +28,11 @@ class LsqEntry extends XSBundle {
   val fwdData = Vec(8, UInt(8.W))
 }
 
+class FwdEntry extends XSBundle {
+  val mask = Vec(8, Bool())
+  val data = Vec(8, UInt(8.W))
+}
+
 
 class LSQueueData(size: Int, nchannel: Int) extends XSModule with HasDCacheParameters with HasCircularQueuePtrHelper {
   val io = IO(new Bundle() {
@@ -48,7 +53,7 @@ class LSQueueData(size: Int, nchannel: Int) extends XSModule with HasDCacheParam
     val needForward = Input(Vec(nchannel, Vec(2, UInt(size.W))))
     val forward = Vec(nchannel, Flipped(new LoadForwardQueryIO))
     val rdata = Output(Vec(size, new LsqEntry))
-    
+
     // val debug = new Bundle() {
     //   val debug_data = Vec(LoadQueueSize, new LsqEntry)
     // }
@@ -71,7 +76,7 @@ class LSQueueData(size: Int, nchannel: Int) extends XSModule with HasDCacheParam
       this.needForward(channel)(1) := needForward2
       this.forward(channel).paddr := paddr
     }
-    
+
     // def refillWrite(ldIdx: Int): Unit = {
     // }
     // use "this.refill.wen(ldIdx) := true.B" instead
@@ -124,6 +129,8 @@ class LSQueueData(size: Int, nchannel: Int) extends XSModule with HasDCacheParam
   // i.e. forward1 is the target entries with the same flag bits and forward2 otherwise
 
   // entry with larger index should have higher priority since it's data is younger
+
+  // FIXME: old fwd logic for assertion, remove when rtl freeze
   (0 until nchannel).map(i => {
 
     val forwardMask1 = WireInit(VecInit(Seq.fill(8)(false.B)))
@@ -152,10 +159,63 @@ class LSQueueData(size: Int, nchannel: Int) extends XSModule with HasDCacheParam
 
     // merge forward lookup results
     // forward2 is younger than forward1 and should have higher priority
+    val oldFwdResult = Wire(new FwdEntry)
     (0 until XLEN / 8).map(k => {
-      io.forward(i).forwardMask(k) := forwardMask1(k) || forwardMask2(k)
-      io.forward(i).forwardData(k) := Mux(forwardMask2(k), forwardData2(k), forwardData1(k))
+      oldFwdResult.mask(k) := RegNext(forwardMask1(k) || forwardMask2(k))
+      oldFwdResult.data(k) := RegNext(Mux(forwardMask2(k), forwardData2(k), forwardData1(k)))
     })
+
+    // parallel fwd logic
+    val paddrMatch = Wire(Vec(size, Bool()))
+    val matchResultVec = Wire(Vec(size * 2, new FwdEntry))
+
+    def parallelFwd(xs: Seq[Data]): Data = {
+      ParallelOperation(xs, (a: Data, b: Data) => {
+        val l = a.asTypeOf(new FwdEntry)
+        val r = b.asTypeOf(new FwdEntry)
+        val res = Wire(new FwdEntry)
+        (0 until 8).map(p => {
+          res.mask(p) := l.mask(p) || r.mask(p)
+          res.data(p) := Mux(r.mask(p), r.data(p), l.data(p))
+        })
+        res
+      })
+    }
+
+    for (j <- 0 until size) {
+      paddrMatch(j) := io.forward(i).paddr(PAddrBits - 1, 3) === data(j).paddr(PAddrBits - 1, 3)
+    }
+
+    for (j <- 0 until size) {
+      val needCheck0 = RegNext(paddrMatch(j) && io.needForward(i)(0)(j))
+      val needCheck1 = RegNext(paddrMatch(j) && io.needForward(i)(1)(j))
+      (0 until XLEN / 8).foreach(k => {
+        matchResultVec(j).mask(k) := needCheck0 && data(j).mask(k)
+        matchResultVec(j).data(k) := data(j).data(8 * (k + 1) - 1, 8 * k)
+        matchResultVec(size + j).mask(k) := needCheck1 && data(j).mask(k)
+        matchResultVec(size + j).data(k) := data(j).data(8 * (k + 1) - 1, 8 * k)
+      })
+    }
+
+    val parallelFwdResult = parallelFwd(matchResultVec).asTypeOf(new FwdEntry)
+
+    io.forward(i).forwardMask := parallelFwdResult.mask
+    io.forward(i).forwardData := parallelFwdResult.data
+
+    when(
+      oldFwdResult.mask.asUInt =/= parallelFwdResult.mask.asUInt
+    ){
+      printf("%d: mask error: right: %b false %b\n", GTimer(), oldFwdResult.mask.asUInt, parallelFwdResult.mask.asUInt)
+    }
+
+    for (p <- 0 until 8) {
+      when(
+        oldFwdResult.data(p) =/= parallelFwdResult.data(p) && oldFwdResult.mask(p)
+      ){
+        printf("%d: data "+p+" error: right: %x false %x\n", GTimer(), oldFwdResult.data(p), parallelFwdResult.data(p))
+      }
+    }
+
   })
 
   // data read
@@ -169,32 +229,57 @@ class InflightBlockInfo extends XSBundle {
   val valid = Bool()
 }
 
+class LsqEnqIO extends XSBundle {
+  val canAccept = Output(Bool())
+  val needAlloc = Vec(RenameWidth, Input(Bool()))
+  val req = Vec(RenameWidth, Flipped(ValidIO(new MicroOp)))
+  val resp = Vec(RenameWidth, Output(new LSIdx))
+}
+
 // Load / Store Queue Wrapper for XiangShan Out of Order LSU
 class LsqWrappper extends XSModule with HasDCacheParameters {
   val io = IO(new Bundle() {
-    val dp1Req = Vec(RenameWidth, Flipped(DecoupledIO(new MicroOp)))
-    val lsIdxs = Output(Vec(RenameWidth, new LSIdx))
+    val enq = new LsqEnqIO
     val brqRedirect = Input(Valid(new Redirect))
     val loadIn = Vec(LoadPipelineWidth, Flipped(Valid(new LsPipelineBundle)))
     val storeIn = Vec(StorePipelineWidth, Flipped(Valid(new LsPipelineBundle)))
     val sbuffer = Vec(StorePipelineWidth, Decoupled(new DCacheWordReq))
     val ldout = Vec(2, DecoupledIO(new ExuOutput)) // writeback store
-    val stout = Vec(2, DecoupledIO(new ExuOutput)) // writeback store
+    val mmioStout = DecoupledIO(new ExuOutput) // writeback uncached store
     val forward = Vec(LoadPipelineWidth, Flipped(new LoadForwardQueryIO))
-    val commits = Flipped(Vec(CommitWidth, Valid(new RoqCommit)))
+    val commits = Flipped(new RoqCommitIO)
     val rollback = Output(Valid(new Redirect))
     val dcache = new DCacheLineIO
     val uncache = new DCacheWordIO
     val roqDeqPtr = Input(new RoqPtr)
-    val oldestStore = Output(Valid(new RoqPtr))
     val exceptionAddr = new ExceptionAddrIO
   })
 
   val loadQueue = Module(new LoadQueue)
   val storeQueue = Module(new StoreQueue)
 
+  // io.enq logic
+  // LSQ: send out canAccept when both load queue and store queue are ready
+  // Dispatch: send instructions to LSQ only when they are ready
+  io.enq.canAccept := loadQueue.io.enq.canAccept && storeQueue.io.enq.canAccept
+  loadQueue.io.enq.sqCanAccept := storeQueue.io.enq.canAccept
+  storeQueue.io.enq.lqCanAccept := loadQueue.io.enq.canAccept
+  for (i <- 0 until RenameWidth) {
+    val isStore = CommitType.lsInstIsStore(io.enq.req(i).bits.ctrl.commitType)
+
+    loadQueue.io.enq.needAlloc(i) := io.enq.needAlloc(i) && !isStore
+    loadQueue.io.enq.req(i).valid  := !isStore && io.enq.req(i).valid
+    loadQueue.io.enq.req(i).bits  := io.enq.req(i).bits
+
+    storeQueue.io.enq.needAlloc(i) := io.enq.needAlloc(i) && isStore
+    storeQueue.io.enq.req(i).valid :=  isStore && io.enq.req(i).valid
+    storeQueue.io.enq.req(i).bits := io.enq.req(i).bits
+
+    io.enq.resp(i).lqIdx := loadQueue.io.enq.resp(i)
+    io.enq.resp(i).sqIdx := storeQueue.io.enq.resp(i)
+  }
+
   // load queue wiring
-  loadQueue.io.dp1Req <> io.dp1Req
   loadQueue.io.brqRedirect <> io.brqRedirect
   loadQueue.io.loadIn <> io.loadIn
   loadQueue.io.storeIn <> io.storeIn
@@ -208,18 +293,16 @@ class LsqWrappper extends XSModule with HasDCacheParameters {
 
   // store queue wiring
   // storeQueue.io <> DontCare
-  storeQueue.io.dp1Req <> io.dp1Req
   storeQueue.io.brqRedirect <> io.brqRedirect
   storeQueue.io.storeIn <> io.storeIn
   storeQueue.io.sbuffer <> io.sbuffer
-  storeQueue.io.stout <> io.stout
+  storeQueue.io.mmioStout <> io.mmioStout
   storeQueue.io.commits <> io.commits
   storeQueue.io.roqDeqPtr <> io.roqDeqPtr
-  storeQueue.io.oldestStore <> io.oldestStore
   storeQueue.io.exceptionAddr.lsIdx := io.exceptionAddr.lsIdx
   storeQueue.io.exceptionAddr.isStore := DontCare
 
-  loadQueue.io.forward <> io.forward
+  loadQueue.io.load_s1 <> io.forward
   storeQueue.io.forward <> io.forward // overlap forwardMask & forwardData, DO NOT CHANGE SEQUENCE
 
   io.exceptionAddr.vaddr := Mux(io.exceptionAddr.isStore, storeQueue.io.exceptionAddr.vaddr, loadQueue.io.exceptionAddr.vaddr)
@@ -265,15 +348,4 @@ class LsqWrappper extends XSModule with HasDCacheParameters {
   assert(!(loadQueue.io.uncache.resp.valid && storeQueue.io.uncache.resp.valid))
   assert(!((loadQueue.io.uncache.resp.valid || storeQueue.io.uncache.resp.valid) && uncacheState === s_idle))
 
-  // fix valid, allocate lq / sq index
-  (0 until RenameWidth).map(i => {
-    val isStore = CommitType.lsInstIsStore(io.dp1Req(i).bits.ctrl.commitType)
-    loadQueue.io.dp1Req(i).valid := !isStore && io.dp1Req(i).valid
-    storeQueue.io.dp1Req(i).valid := isStore && io.dp1Req(i).valid
-    loadQueue.io.lqIdxs(i) <> io.lsIdxs(i).lqIdx
-    storeQueue.io.sqIdxs(i) <> io.lsIdxs(i).sqIdx
-    loadQueue.io.lqReady <> storeQueue.io.lqReady
-    loadQueue.io.sqReady <> storeQueue.io.sqReady
-    io.dp1Req(i).ready := storeQueue.io.dp1Req(i).ready && loadQueue.io.dp1Req(i).ready
-  })
 }

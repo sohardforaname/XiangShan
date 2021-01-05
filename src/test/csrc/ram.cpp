@@ -1,31 +1,36 @@
+#include <sys/mman.h>
+
 #include "common.h"
 #include "ram.h"
+#include "compress.h"
 
-#define RAMSIZE (128 * 1024 * 1024)
 
 #ifdef WITH_DRAMSIM3
 #include "cosimulation.h"
 CoDRAMsim3 *dram = NULL;
 #endif
 
-static uint64_t ram[RAMSIZE / sizeof(uint64_t)];
+static uint64_t *ram;
 static long img_size = 0;
+static pthread_mutex_t ram_mutex;
+
 void* get_img_start() { return &ram[0]; }
 long get_img_size() { return img_size; }
 void* get_ram_start() { return &ram[0]; }
-long get_ram_size() { return RAMSIZE; }
+long get_ram_size() { return EMU_RAM_SIZE; }
 
+#ifdef TLB_UNITTEST
 void addpageSv39() {
 //three layers
 //addr range: 0x0000000080000000 - 0x0000000088000000 for 128MB from 2GB - 2GB128MB
 //the first layer: one entry for 1GB. (512GB in total by 512 entries). need the 2th entries
 //the second layer: one entry for 2MB. (1GB in total by 512 entries). need the 0th-63rd entries
-//the third layer: one entry for 4KB (2MB in total by 512 entries). need 64 with each one all  
-
+//the third layer: one entry for 4KB (2MB in total by 512 entries). need 64 with each one all
+#define TOPSIZE (128 * 1024 * 1024)
 #define PAGESIZE (4 * 1024)  // 4KB = 2^12B
 #define ENTRYNUM (PAGESIZE / 8) //512 2^9
 #define PTEVOLUME (PAGESIZE * ENTRYNUM) // 2MB
-#define PTENUM (RAMSIZE / PTEVOLUME) // 128MB / 2MB = 64
+#define PTENUM (TOPSIZE / PTEVOLUME) // 128MB / 2MB = 64
 #define PDDENUM 1
 #define PDENUM 1
 #define PDDEADDR (0x88000000 - (PAGESIZE * (PTENUM + 2))) //0x88000000 - 0x1000*66
@@ -39,7 +44,7 @@ void addpageSv39() {
   uint64_t pdde[ENTRYNUM];
   uint64_t pde[ENTRYNUM];
   uint64_t pte[PTENUM][ENTRYNUM];
-  
+
   // special addr for mmio 0x40000000 - 0x4fffffff
   uint64_t pdemmio[ENTRYNUM];
   uint64_t ptemmio[PTEMMIONUM][ENTRYNUM];
@@ -67,13 +72,13 @@ void addpageSv39() {
   for(int i = 0; i < PTEMMIONUM; i++) {
     pdemmio[i] = (((PDDEADDR-PAGESIZE*(PTEMMIONUM+PDEMMIONUM-i)) & 0xfffff000) >> 2) | 0x1;
   }
-  
+
   for(int outidx = 0; outidx < PTEMMIONUM; outidx++) {
     for(int inidx = 0; inidx < ENTRYNUM; inidx++) {
       ptemmio[outidx][inidx] = (((0x40000000 + outidx*PTEVOLUME + inidx*PAGESIZE) & 0xfffff000) >> 2) | 0xf;
     }
   }
-  
+
   //0x800000000 - 0x87ffffff
   pdde[2] = ((PDEADDR & 0xfffff000) >> 2) | 0x1;
   //pdde[2] = ((0x80000000&0xc0000000) >> 2) | 0xf;
@@ -89,62 +94,102 @@ void addpageSv39() {
     }
   }
 
-  memcpy((char *)ram+(RAMSIZE-PAGESIZE*(PTENUM+PDDENUM+PDENUM+PDEMMIONUM+PTEMMIONUM+PDEDEVNUM+PTEDEVNUM)),ptedev,PAGESIZE*PTEDEVNUM);
-  memcpy((char *)ram+(RAMSIZE-PAGESIZE*(PTENUM+PDDENUM+PDENUM+PDEMMIONUM+PTEMMIONUM+PDEDEVNUM)),pdedev,PAGESIZE*PDEDEVNUM);
-  memcpy((char *)ram+(RAMSIZE-PAGESIZE*(PTENUM+PDDENUM+PDENUM+PDEMMIONUM+PTEMMIONUM)),ptemmio, PAGESIZE*PTEMMIONUM);
-  memcpy((char *)ram+(RAMSIZE-PAGESIZE*(PTENUM+PDDENUM+PDENUM+PDEMMIONUM)), pdemmio, PAGESIZE*PDEMMIONUM);
-  memcpy((char *)ram+(RAMSIZE-PAGESIZE*(PTENUM+PDDENUM+PDENUM)), pdde, PAGESIZE*PDDENUM);
-  memcpy((char *)ram+(RAMSIZE-PAGESIZE*(PTENUM+PDENUM)), pde, PAGESIZE*PDENUM);
-  memcpy((char *)ram+(RAMSIZE-PAGESIZE*PTENUM), pte, PAGESIZE*PTENUM);
+  memcpy((char *)ram+(TOPSIZE-PAGESIZE*(PTENUM+PDDENUM+PDENUM+PDEMMIONUM+PTEMMIONUM+PDEDEVNUM+PTEDEVNUM)),ptedev,PAGESIZE*PTEDEVNUM);
+  memcpy((char *)ram+(TOPSIZE-PAGESIZE*(PTENUM+PDDENUM+PDENUM+PDEMMIONUM+PTEMMIONUM+PDEDEVNUM)),pdedev,PAGESIZE*PDEDEVNUM);
+  memcpy((char *)ram+(TOPSIZE-PAGESIZE*(PTENUM+PDDENUM+PDENUM+PDEMMIONUM+PTEMMIONUM)),ptemmio, PAGESIZE*PTEMMIONUM);
+  memcpy((char *)ram+(TOPSIZE-PAGESIZE*(PTENUM+PDDENUM+PDENUM+PDEMMIONUM)), pdemmio, PAGESIZE*PDEMMIONUM);
+  memcpy((char *)ram+(TOPSIZE-PAGESIZE*(PTENUM+PDDENUM+PDENUM)), pdde, PAGESIZE*PDDENUM);
+  memcpy((char *)ram+(TOPSIZE-PAGESIZE*(PTENUM+PDENUM)), pde, PAGESIZE*PDENUM);
+  memcpy((char *)ram+(TOPSIZE-PAGESIZE*PTENUM), pte, PAGESIZE*PTENUM);
 }
+#endif
 
 void init_ram(const char *img) {
   assert(img != NULL);
-  FILE *fp = fopen(img, "rb");
-  if (fp == NULL) {
-    printf("Can not open '%s'\n", img);
-    assert(0);
-  }
 
   printf("The image is %s\n", img);
 
-  fseek(fp, 0, SEEK_END);
-  img_size = ftell(fp);
-  if (img_size > RAMSIZE) {
-    img_size = RAMSIZE;
+  // initialize memory using Linux mmap
+  printf("Using simulated %luMB RAM\n", EMU_RAM_SIZE / (1024 * 1024));
+  ram = (uint64_t *)mmap(NULL, EMU_RAM_SIZE, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+  if (ram == (uint64_t *)MAP_FAILED) {
+    printf("Cound not mmap 0x%lx bytes\n", EMU_RAM_SIZE);
+    assert(0);
   }
 
-  fseek(fp, 0, SEEK_SET);
-  int ret = fread(ram, img_size, 1, fp);
-  assert(ret == 1);
-  fclose(fp);
+  int ret;
+  if (isGzFile(img)) {
+    printf("Gzip file detected and loading image from extracted gz file\n");
+    img_size = readFromGz(ram, img, EMU_RAM_SIZE, LOAD_RAM);
+    assert(img_size >= 0);
+  }
+  else {
+    FILE *fp = fopen(img, "rb");
+    if (fp == NULL) {
+      printf("Can not open '%s'\n", img);
+      assert(0);
+    }
 
+    fseek(fp, 0, SEEK_END);
+    img_size = ftell(fp);
+    if (img_size > EMU_RAM_SIZE) {
+      img_size = EMU_RAM_SIZE;
+    }
+
+    fseek(fp, 0, SEEK_SET);
+    ret = fread(ram, img_size, 1, fp);
+
+    assert(ret == 1);
+    fclose(fp);
+  }
+
+#ifdef TLB_UNITTEST
   //new add
   addpageSv39();
   //new end
+#endif
 
 #ifdef WITH_DRAMSIM3
   #if !defined(DRAMSIM3_CONFIG) || !defined(DRAMSIM3_OUTDIR)
   #error DRAMSIM3_CONFIG or DRAMSIM3_OUTDIR is not defined
   #endif
   assert(dram == NULL);
-  dram = new CoDRAMsim3(DRAMSIM3_CONFIG, DRAMSIM3_OUTDIR);
+  // dram = new ComplexCoDRAMsim3(DRAMSIM3_CONFIG, DRAMSIM3_OUTDIR);
+  dram = new SimpleCoDRAMsim3(10);
 #endif
+
+  pthread_mutex_init(&ram_mutex, 0);
 
 }
 
+void ram_finish() {
+  munmap(ram, EMU_RAM_SIZE);
+#ifdef WITH_DRAMSIM3
+  dramsim3_finish();
+#endif
+  pthread_mutex_destroy(&ram_mutex);
+}
+
+
 extern "C" uint64_t ram_read_helper(uint8_t en, uint64_t rIdx) {
-  if (en && rIdx >= RAMSIZE / sizeof(uint64_t)) {
-    printf("ERROR: ram idx = 0x%lx out of bound!\n", rIdx);
-    assert(rIdx < RAMSIZE / sizeof(uint64_t));
+  if (en && rIdx >= EMU_RAM_SIZE / sizeof(uint64_t)) {
+    rIdx %= EMU_RAM_SIZE / sizeof(uint64_t);
   }
-  return (en) ? ram[rIdx] : 0;
+  pthread_mutex_lock(&ram_mutex);
+  uint64_t rdata = (en) ? ram[rIdx] : 0;
+  pthread_mutex_unlock(&ram_mutex);
+  return rdata;
 }
 
 extern "C" void ram_write_helper(uint64_t wIdx, uint64_t wdata, uint64_t wmask, uint8_t wen) {
   if (wen) {
-    assert(wIdx < RAMSIZE / sizeof(uint64_t));
+    if (wIdx >= EMU_RAM_SIZE / sizeof(uint64_t)) {
+      printf("ERROR: ram wIdx = 0x%lx out of bound!\n", wIdx);
+      assert(wIdx < EMU_RAM_SIZE / sizeof(uint64_t));
+    }
+    pthread_mutex_lock(&ram_mutex);
     ram[wIdx] = (ram[wIdx] & ~wmask) | (wdata & wmask);
+    pthread_mutex_unlock(&ram_mutex);
   }
 }
 
@@ -167,7 +212,7 @@ struct dramsim3_meta {
 };
 
 void axi_read_data(const axi_ar_channel &ar, dramsim3_meta *meta) {
-  uint64_t address = ar.addr % RAMSIZE;
+  uint64_t address = ar.addr % EMU_RAM_SIZE;
   uint64_t beatsize = 1 << ar.size;
   uint8_t  beatlen  = ar.len + 1;
   uint64_t transaction_size = beatsize * beatlen;
@@ -316,7 +361,7 @@ void dramsim3_helper(axi_channel &axi) {
     axi.b.id = meta->id;
     // assert(axi.b.ready == 1);
     for (int i = 0; i < meta->len; i++) {
-      uint64_t address = wait_resp_b->req->address % RAMSIZE;
+      uint64_t address = wait_resp_b->req->address % EMU_RAM_SIZE;
       ram[address / sizeof(uint64_t) + i] = meta->data[i];
     }
     // printf("axi b channel fired\n");

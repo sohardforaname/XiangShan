@@ -9,13 +9,12 @@ import xiangshan.backend.exu._
 import xiangshan.cache._
 import xiangshan.mem._
 import xiangshan.backend.fu.FenceToSbuffer
-import xiangshan.backend.issue.ReservationStationNew
+import xiangshan.backend.issue.{ReservationStationCtrl, ReservationStationData}
 import xiangshan.backend.fu.FunctionUnit.{lduCfg, mouCfg, stuCfg}
 
 class LsBlockToCtrlIO extends XSBundle {
   val stOut = Vec(exuParameters.StuCnt, ValidIO(new ExuOutput)) // write to roq
   val numExist = Vec(exuParameters.LsExuCnt, Output(UInt(log2Ceil(IssQueSize).W)))
-  val lsqIdxResp = Vec(RenameWidth, Output(new LSIdx))
   val replay = ValidIO(new Redirect)
 }
 
@@ -54,9 +53,8 @@ class MemBlock
 
     val lsqio = new Bundle {
       val exceptionAddr = new ExceptionAddrIO // to csr
-      val commits = Flipped(Vec(CommitWidth, Valid(new RoqCommit))) // to lsq
+      val commits = Flipped(new RoqCommitIO) // to lsq
       val roqDeqPtr = Input(new RoqPtr) // to lsq
-      val oldestStore = Output(Valid(new RoqPtr)) // to dispatch
     }
   })
 
@@ -105,26 +103,30 @@ class MemBlock
 
     println(s"${i}: exu:${cfg.name} wakeupCnt: ${wakeupCnt} extraListenPorts: ${extraListenPortsCnt} delay:${certainLatency} feedback:${feedback}")
 
-    val rs = Module(new ReservationStationNew(
-      cfg, wakeupCnt, extraListenPortsCnt, fixedDelay = certainLatency, feedback = feedback
-    ))
+    val rsCtrl = Module(new ReservationStationCtrl(cfg, wakeupCnt, extraListenPortsCnt, fixedDelay = certainLatency, feedback = feedback))
+    val rsData = Module(new ReservationStationData(cfg, wakeupCnt, extraListenPortsCnt, fixedDelay = certainLatency, feedback = feedback))
 
-    rs.io.redirect <> redirect
-    rs.io.numExist <> io.toCtrlBlock.numExist(i)
-    rs.io.enqCtrl <> io.fromCtrlBlock.enqIqCtrl(i)
-    rs.io.enqData <> io.fromCtrlBlock.enqIqData(i)
+    rsCtrl.io.data <> rsData.io.ctrl
+    rsCtrl.io.redirect <> redirect // TODO: remove it
+    rsCtrl.io.numExist <> io.toCtrlBlock.numExist(i)
+    rsCtrl.io.enqCtrl <> io.fromCtrlBlock.enqIqCtrl(i)
+    rsData.io.enqData <> io.fromCtrlBlock.enqIqData(i)
+    rsData.io.redirect <> redirect
 
-    rs.io.writeBackedData <> writeBackData
-    for ((x, y) <- rs.io.extraListenPorts.zip(extraListenPorts)) {
+    rsData.io.writeBackedData <> writeBackData
+    for ((x, y) <- rsData.io.extraListenPorts.zip(extraListenPorts)) {
       x.valid := y.fire()
       x.bits := y.bits
     }
 
-    rs.io.tlbFeedback := DontCare
+    // exeUnits(i).io.redirect <> redirect
+    // exeUnits(i).io.fromInt <> rsData.io.deq
+    rsData.io.feedback := DontCare
 
-    rs.suggestName(s"rs_${cfg.name}")
+    rsCtrl.suggestName(s"rsc_${cfg.name}")
+    rsData.suggestName(s"rsd_${cfg.name}")
 
-    rs
+    rsData
   })
 
   for(rs <- reservationStations){
@@ -166,7 +168,7 @@ class MemBlock
   // LoadUnit
   for (i <- 0 until exuParameters.LduCnt) {
     loadUnits(i).io.redirect      <> io.fromCtrlBlock.redirect
-    loadUnits(i).io.tlbFeedback   <> reservationStations(i).io.tlbFeedback
+    loadUnits(i).io.tlbFeedback   <> reservationStations(i).io.feedback
     loadUnits(i).io.dtlb          <> dtlb.io.requestor(i)
     // get input form dispatch
     loadUnits(i).io.ldin          <> reservationStations(i).io.deq
@@ -184,22 +186,28 @@ class MemBlock
   // StoreUnit
   for (i <- 0 until exuParameters.StuCnt) {
     storeUnits(i).io.redirect     <> io.fromCtrlBlock.redirect
-    storeUnits(i).io.tlbFeedback  <> reservationStations(exuParameters.LduCnt + i).io.tlbFeedback
+    storeUnits(i).io.tlbFeedback  <> reservationStations(exuParameters.LduCnt + i).io.feedback
     storeUnits(i).io.dtlb         <> dtlb.io.requestor(exuParameters.LduCnt + i)
     // get input form dispatch
     storeUnits(i).io.stin         <> reservationStations(exuParameters.LduCnt + i).io.deq
     // passdown to lsq
     storeUnits(i).io.lsq          <> lsq.io.storeIn(i)
-    io.toCtrlBlock.stOut(i).valid := lsq.io.stout(i).valid
-    io.toCtrlBlock.stOut(i).bits  := lsq.io.stout(i).bits
-	lsq.io.stout(i).ready := true.B
+    io.toCtrlBlock.stOut(i).valid := storeUnits(i).io.stout.valid
+    io.toCtrlBlock.stOut(i).bits  := storeUnits(i).io.stout.bits
+	  storeUnits(i).io.stout.ready := true.B
+  }
+
+  // mmio store writeback will use store writeback port 0
+  lsq.io.mmioStout.ready := false.B
+  when(lsq.io.mmioStout.valid && !storeUnits(0).io.stout.valid) {
+    io.toCtrlBlock.stOut(0).valid := true.B
+    lsq.io.mmioStout.ready := true.B
+    io.toCtrlBlock.stOut(0).bits  := lsq.io.mmioStout.bits
   }
 
   // Lsq
   lsq.io.commits     <> io.lsqio.commits
-  lsq.io.dp1Req      <> io.fromCtrlBlock.lsqIdxReq
-  lsq.io.oldestStore <> io.lsqio.oldestStore
-  lsq.io.lsIdxs      <> io.toCtrlBlock.lsqIdxResp
+  lsq.io.enq         <> io.fromCtrlBlock.enqLsq
   lsq.io.brqRedirect := io.fromCtrlBlock.redirect
   lsq.io.roqDeqPtr   := io.lsqio.roqDeqPtr
   io.toCtrlBlock.replay <> lsq.io.rollback
@@ -221,48 +229,67 @@ class MemBlock
   assert(!(fenceFlush && atomicsFlush))
   sbuffer.io.flush.valid := fenceFlush || atomicsFlush
 
-  // TODO: make 0/1 configurable
-  // AtomicsUnit
-  // AtomicsUnit will override other control signials,
+  // AtomicsUnit: AtomicsUnit will override other control signials,
   // as atomics insts (LR/SC/AMO) will block the pipeline
-  val st0_atomics = reservationStations(2).io.deq.valid && reservationStations(2).io.deq.bits.uop.ctrl.fuType === FuType.mou
-  val st1_atomics = reservationStations(3).io.deq.valid && reservationStations(3).io.deq.bits.uop.ctrl.fuType === FuType.mou
-  // amo should always go through store issue queue 0
-  assert(!st1_atomics)
+  val s_normal :: s_atomics_0 :: s_atomics_1 :: Nil = Enum(3)
+  val state = RegInit(s_normal)
+
+  val atomic_rs0 = exuParameters.LduCnt + 0
+  val atomic_rs1 = exuParameters.LduCnt + 1
+  val st0_atomics = reservationStations(atomic_rs0).io.deq.valid && reservationStations(atomic_rs0).io.deq.bits.uop.ctrl.fuType === FuType.mou
+  val st1_atomics = reservationStations(atomic_rs1).io.deq.valid && reservationStations(atomic_rs1).io.deq.bits.uop.ctrl.fuType === FuType.mou
+
+  when (st0_atomics) {
+    reservationStations(atomic_rs0).io.deq.ready := atomicsUnit.io.in.ready
+    storeUnits(0).io.stin.valid := false.B
+
+    state := s_atomics_0
+    assert(!st1_atomics)
+  }
+  when (st1_atomics) {
+    reservationStations(atomic_rs1).io.deq.ready := atomicsUnit.io.in.ready
+    storeUnits(1).io.stin.valid := false.B
+
+    state := s_atomics_1
+    assert(!st0_atomics)
+  }
+  when (atomicsUnit.io.out.valid) {
+    assert(state === s_atomics_0 || state === s_atomics_1)
+    state := s_normal
+  }
+
+  atomicsUnit.io.in.valid := st0_atomics || st1_atomics
+  atomicsUnit.io.in.bits  := Mux(st0_atomics, reservationStations(atomic_rs0).io.deq.bits, reservationStations(atomic_rs1).io.deq.bits)
+  atomicsUnit.io.redirect <> io.fromCtrlBlock.redirect
 
   atomicsUnit.io.dtlb.resp.valid := false.B
   atomicsUnit.io.dtlb.resp.bits  := DontCare
-
-  // dispatch 0 takes priority
-  atomicsUnit.io.in.valid := st0_atomics
-  atomicsUnit.io.in.bits  := reservationStations(2).io.deq.bits
-  when (st0_atomics) {
-    reservationStations(0).io.deq.ready := atomicsUnit.io.in.ready
-    storeUnits(0).io.stin.valid := false.B
-  }
-
-  when(atomicsUnit.io.dtlb.req.valid) {
-    dtlb.io.requestor(0) <> atomicsUnit.io.dtlb
-    // take load unit 0's tlb port
-    // make sure not to disturb loadUnit
-    assert(!loadUnits(0).io.dtlb.req.valid)
-    loadUnits(0).io.dtlb.resp.valid := false.B
-  }
-
-  when(atomicsUnit.io.tlbFeedback.valid) {
-    assert(!storeUnits(0).io.tlbFeedback.valid)
-    atomicsUnit.io.tlbFeedback <> reservationStations(exuParameters.LduCnt + 0).io.tlbFeedback
-  }
+  atomicsUnit.io.dtlb.req.ready := dtlb.io.requestor(0).req.ready
 
   atomicsUnit.io.dcache        <> io.dcache.atomics
   atomicsUnit.io.flush_sbuffer.empty := sbuffer.io.flush.empty
 
-  atomicsUnit.io.redirect <> io.fromCtrlBlock.redirect
+  // for atomicsUnit, it uses loadUnit(0)'s TLB port
+  when (state === s_atomics_0 || state === s_atomics_1) {
+    atomicsUnit.io.dtlb <> dtlb.io.requestor(0)
 
-  when(atomicsUnit.io.out.valid){
-    // take load unit 0's write back port
-    assert(!loadUnits(0).io.ldout.valid)
+    loadUnits(0).io.dtlb.resp.valid := false.B
     loadUnits(0).io.ldout.ready := false.B
+
+    // make sure there's no in-flight uops in load unit
+    assert(!loadUnits(0).io.dtlb.req.valid)
+    assert(!loadUnits(0).io.ldout.valid)
+  }
+
+  when (state === s_atomics_0) {
+    atomicsUnit.io.tlbFeedback <> reservationStations(atomic_rs0).io.feedback
+
+    assert(!storeUnits(0).io.tlbFeedback.valid)
+  }
+  when (state === s_atomics_1) {
+    atomicsUnit.io.tlbFeedback <> reservationStations(atomic_rs1).io.feedback
+
+    assert(!storeUnits(1).io.tlbFeedback.valid)
   }
 
   lsq.io.exceptionAddr.lsIdx := io.lsqio.exceptionAddr.lsIdx
