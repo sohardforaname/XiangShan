@@ -8,7 +8,7 @@ import xiangshan.{HasXSParameter, XSBundle, XSModule, HasXSLog}
 import chipsalliance.rocketchip.config.Parameters
 import freechips.rocketchip.diplomacy.{LazyModule, LazyModuleImp, IdRange}
 import freechips.rocketchip.tilelink.{TLClientNode, TLMasterParameters, TLMasterPortParameters, TLHints}
-import sifive.blocks.inclusivecache.{PrefetcherIO}
+import sifive.blocks.inclusivecache.{PrefetcherTrainingIO}
 
 import scala.math.max
 
@@ -61,7 +61,7 @@ class DCachePrefetcher()(implicit p: Parameters) extends LazyModule with HasDCac
 
 class DCachePrefetcherImp(outer: DCachePrefetcher) extends LazyModuleImp(outer) with HasDCachePrefetcherParameters with HasXSLog {
 
-  val io = IO(Flipped(new PrefetcherIO(PAddrBits)))
+  val io = IO(Flipped(new PrefetcherTrainingIO(PAddrBits)))
 
   // use this to send prefetch req to L2
   val l2Prefetch = Wire(new L2PrefetchIO())

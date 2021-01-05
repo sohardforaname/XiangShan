@@ -50,7 +50,7 @@ trait HasPrefetcherParameters extends HasXSParameter with MemoryOpConstants {
   def offsetList = l2cfg.offsetList
   def scores = l2cfg.scores
   def offsetWidth = log2Up(offsetList(scores - 1)) + 1
-  def prefetchEntries = 8
+  def l2PrefetchEntries = 8
 }
 
 abstract class PrefetcherModule extends XSModule
@@ -59,17 +59,18 @@ abstract class PrefetcherModule extends XSModule
 abstract class PrefetcherBundle extends XSBundle
   with HasPrefetcherParameters
   
-class PrefetchReq extends PrefetcherBundle {
-  val cmd = UInt(M_SZ.W)
+class PrefetchReq(idWidth: Int) extends PrefetcherBundle {
+  // val cmd = UInt(M_SZ.W)
   val addr = UInt(PAddrBits.W)
+  val write = Bool()
   val id = UInt(idWidth.W)
 
   override def toPrintable: Printable = {
-    p"cmd=${Hexadecimal(cmd)} addr=0x${Hexadecimal(addr)} id=${id}"
+    p"addr=0x${Hexadecimal(addr)} w=${write} id=${id}"
   }
 }
 
-class PrefetchResp extends PrefetcherBundle {
+class PrefetchResp(idWidth: Int) extends PrefetcherBundle {
   val id = UInt(idWidth.W)
 
   override def toPrintable: Printable = {
@@ -150,7 +151,7 @@ class L2Prefetcher()(implicit p: Parameters) extends LazyModule with HasPrefetch
   val clientParameters = TLMasterPortParameters.v1(
     Seq(TLMasterParameters.v1(
       name = "l2Prefetcher",
-      sourceId = IdRange(0, prefetchEntries) // prefetchEntries = 8
+      sourceId = IdRange(0, l2PrefetchEntries)
     ))
   )
 

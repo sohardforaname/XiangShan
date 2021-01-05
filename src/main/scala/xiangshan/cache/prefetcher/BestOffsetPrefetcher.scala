@@ -7,6 +7,8 @@ import xiangshan._
 import xiangshan.cache._
 import utils._
 
+import sifive.blocks.inclusivecache.{PrefetcherAcquire, PrefetcherRelease, PrefetcherTrainingIO}
+
 trait BestOffsetPrefetcherParameters {
   def rrTableEntries: Int // recent requests table
   def rrTagBits: Int
@@ -250,37 +252,56 @@ class OffsetScoreTable extends PrefetcherModule {
   XSDebug(p"state=${state} ptr=${ptr} round=${round} d=${testOffset} D=${prefetchOffset} winner=${winnerEntry}\n")
 }
 
+class PrefetchBitMapEntry extends PrefetcherBundle {
+  def idxWidth = log2Up(L2NSets)
+  def offsetWidth = log2Up(L2BlockSize)
+  def tagWidth = PAddrBits - idxWidth - offsetWidth
+
+  val v = Bool()
+  val w = Bool()
+  val p = Bool() // prefetched
+  val tag = UInt(tagWidth.W)
+}
+
 class BestOffsetPrefetcherIO extends PrefetcherBundle {
-  val in = Flipped(DecoupledIO(new Bundle {
-    val req = new PrefetchReq
-    val miss = Bool() // Is this request miss?
-    val prefetched = Bool() // If hit, is this a prefetched hit?
-  }))
+  val in = Flipped(new PrefetcherTrainingIO(PAddrBits))
 
   val prefetch = new Bundle {
-    val req = DecoupledIO(new PrefetchReq)
-    val resp = Flipped(DecoupledIO(new PrefetchResp))
-    val finish = DecoupledIO(new PrefetchFinish)
+    val req = DecoupledIO(new PrefetchReq(log2Up(l2PrefetchEntries))())
+    val resp = Flipped(DecoupledIO(new PrefetchResp(lof2Up(l2PrefetchEntries))))
+    // val finish = DecoupledIO(new PrefetchFinish)
   }
 
   override def toPrintable: Printable = {
-    p"[io.in] v=${in.valid} r=${in.ready} req: ${in.bits.req} miss=${in.bits.miss} prefetched=${in.bits.prefetched}\n" +
+    p"[io.in] ${in}\n" +
       p"[io.prefetch] req: v=${prefetch.req.valid} r=${prefetch.req.ready} ${prefetch.req.bits} " +
       p"resp: v=${prefetch.resp.valid} r=${prefetch.resp.ready} ${prefetch.resp.bits} " +
-      p"finish: v=${prefetch.finish.valid} r=${prefetch.finish.ready} ${prefetch.finish.bits}"
+      // p"finish: v=${prefetch.finish.valid} r=${prefetch.finish.ready} ${prefetch.finish.bits}"
   }
 }
 
 class BestOffsetPrefetcherEntryIO extends BestOffsetPrefetcherIO {
+
+  val in = Flipped(DecoupledIO(
+    val prefetched = Bool()
+    val acquire = new PrefetcherAcquire(PAddrBits)
+  ))
+
+  val prefetch = new Bundle {
+    val req = DecoupledIO(new PrefetchReq(log2Up(l2PrefetchEntries)))
+    val resp = Flipped(DecoupledIO(new PrefetchResp(lof2Up(l2PrefetchEntries))))
+    // val finish = DecoupledIO(new PrefetchFinish)
+  }
+
   val prefetchOffset = Input(UInt(offsetWidth.W))
-  val id = Input(UInt(log2Up(prefetchEntries).W))
+  val id = Input(UInt(log2Up(l2PrefetchEntries).W))
   val addr = Output(ValidIO(UInt(PAddrBits.W)))
 
   override def toPrintable: Printable = {
-    p"[io.in] v=${in.valid} r=${in.ready} req: ${in.bits.req} miss=${in.bits.miss} prefetched=${in.bits.prefetched}\n" +
+    p"[io.in] v=${in.valid} r=${in.ready} prefetched=${in.bits.prefetched} ${in.bits.acquire}\n" +
       p"[io.prefetch] req: v=${prefetch.req.valid} r=${prefetch.req.ready} ${prefetch.req.bits} " +
       p"resp: v=${prefetch.resp.valid} r=${prefetch.resp.ready} ${prefetch.resp.bits} " +
-      p"finish: v=${prefetch.finish.valid} r=${prefetch.finish.ready} ${prefetch.finish.bits}\n" +
+      // p"finish: v=${prefetch.finish.valid} r=${prefetch.finish.ready} ${prefetch.finish.bits}\n" +
       p"[io]prefetchOffset=${prefetchOffset} id=${Hexadecimal(id)} addr=(v ${addr.valid})0x${Hexadecimal(addr.bits)}"
   }
 }
@@ -288,15 +309,13 @@ class BestOffsetPrefetcherEntryIO extends BestOffsetPrefetcherIO {
 class BestOffsetPrefetcherEntry extends PrefetcherModule {
   val io = IO(new BestOffsetPrefetcherEntryIO)
 
-  val s_idle :: s_req :: s_resp :: s_finish :: Nil = Enum(4)
+  val s_idle :: s_req :: s_resp :: Nil = Enum(3)
   val state = RegInit(s_idle)
-  val req = Reg(new PrefetchReq)
-  val resp = Reg(new PrefetchResp)
+  val inLatch = RegEnable(io.in.bits, io.in.fire())
 
   when (state === s_idle) {
     when (io.in.fire()) {
       state := s_req
-      req := io.in.bits.req
     }
   }
 
@@ -308,30 +327,21 @@ class BestOffsetPrefetcherEntry extends PrefetcherModule {
 
   when (state === s_resp) {
     when (io.prefetch.resp.fire()) {
-      state := s_finish
-      resp := io.prefetch.resp.bits
-    }
-  }
-
-  when (state === s_finish) {
-    when (io.prefetch.finish.fire()) {
       state := s_idle
     }
   }
 
   io.in.ready := state === s_idle
   io.prefetch.req.valid := state === s_req
-  io.prefetch.req.bits.cmd := M_XRD // TODO: specify this
-  io.prefetch.req.bits.addr := req.addr + (io.prefetchOffset << (log2Up(CacheLineSize/8)))
-  io.prefetch.req.bits.id := DontCare // TODO
+  io.prefetch.req.bits.addr := inLatch.acquire.address + (io.prefetchOffset << (log2Up(CacheLineSize/8)))
+  io.prefetch.req.bits.write := inLatch.acquire.write
+  io.prefetch.req.bits.id := io.id
   io.prefetch.resp.ready := state === s_resp
-  io.prefetch.finish.valid := state === s_finish
-  io.prefetch.finish.bits.id := resp.id
   io.addr.valid := state =/= s_idle
-  io.addr.bits := req.addr
+  io.addr.bits := inLatch.acquire.address
 
   XSDebug(p"${io}\n")
-  XSDebug(p"state=${state} req:${req} resp:${resp}\n")
+  XSDebug(p"state=${state}\n")
 
 }
 
@@ -340,6 +350,7 @@ class BestOffsetPrefetcher extends PrefetcherModule {
 
   val rrTable = Module(new RecentRequestTable)
   val scoreTable = Module(new OffsetScoreTable)
+  val bitMap = Module(new SRAMTemplate(PrefetchBitMapEntry(), set = L2NSets, way = L2NWays, shouldReset = true))
 
   val prefetchOffset = scoreTable.io.prefetchOffset
 
@@ -347,16 +358,15 @@ class BestOffsetPrefetcher extends PrefetcherModule {
   // When a read request for line X accesses the L2 cache, if this is a miss or a prefetched hit 
   // (i.e., the prefetch bit is set), and if X and X+D lie in the same memory page, a prefetch 
   // for line X+D is sent to the L3 cache.
-  val entryFree = Wire(Vec(prefetchEntries, Bool()))
+  val entryFree = Wire(Vec(l2PrefetchEntries, Bool()))
   val entryAllocIdx = Wire(UInt())
 
-  val reqArb = Module(new Arbiter(new PrefetchReq, prefetchEntries))
-  val finishArb = Module(new Arbiter(new PrefetchFinish, prefetchEntries))
+  val reqArb = Module(new Arbiter(new PrefetchReq(log2Up(l2PrefetchEntries)), l2PrefetchEntries))
 
-  val entries = (0 until prefetchEntries).map { i => 
+  val entries = (0 until l2PrefetchEntries).map { i => 
     val e = Module(new BestOffsetPrefetcherEntry)
 
-    e.io.id := i.U(log2Up(prefetchEntries).W)
+    e.io.id := i.U(log2Up(l2PrefetchEntries).W)
     e.io.prefetchOffset := prefetchOffset
 
     e.io.in.valid := io.in.valid && (io.in.bits.miss || io.in.bits.prefetched) && entryFree.asUInt.orR && entryAllocIdx === i.U
