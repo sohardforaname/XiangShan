@@ -198,6 +198,7 @@ class CSR extends FunctionUnit with HasCSRConst
     // to ROB
     val trapTarget = Output(UInt(VAddrBits.W))
     val interrupt = Output(Bool())
+    val wfiWakeup = Output(Bool())
     // from LSQ
     val memExceptionVAddr = Input(UInt(VAddrBits.W))
     // from outside cpu,externalInterrupt
@@ -529,7 +530,7 @@ class CSR extends FunctionUnit with HasCSRConst
   val satpLegalMode = (wdata.asTypeOf(new SatpStruct).mode===0.U) || (wdata.asTypeOf(new SatpStruct).mode===8.U)
 
   // general CSR wen check
-  val wen = valid && func =/= CSROpType.jmp && (addr=/=Satp.U || satpLegalMode)
+  val wen = valid && func =/= CSROpType.jmp && func =/= CSROpType.wfi && (addr=/=Satp.U || satpLegalMode)
   val permitted = csrAccessPermissionCheck(addr, false.B, priviledgeMode)
   // Writeable check is ingored.
   // Currently, write to illegal csr addr will be ignored
@@ -658,6 +659,11 @@ class CSR extends FunctionUnit with HasCSRConst
     "Rediret %x isSret:%d retTarget:%x sepc:%x cfInpc:%x valid:%d\n",
     csrio.redirectOut.bits, isSret, retTarget, sepc, cfIn.pc, valid
   )
+
+  // wait for interrupt
+  val wfiWakeupSrc = WireInit(mip)
+  wfiWakeupSrc.t := 0.U.asTypeOf(new Priv)
+  csrio.wfiWakeup := wfiWakeupSrc.asUInt.orR
 
   io.in.ready := true.B
   io.out.valid := valid

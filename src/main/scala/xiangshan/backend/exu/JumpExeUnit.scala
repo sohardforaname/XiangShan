@@ -19,6 +19,7 @@ class JumpExeUnit extends Exu(jumpExeUnitCfg)
     val isInterrupt = Input(Bool())
     val trapTarget = Output(UInt(VAddrBits.W))
     val interrupt = Output(Bool())
+    val wfiWakeup = Output(Bool())
     val memExceptionVAddr = Input(UInt(VAddrBits.W))
     val externalInterrupt = new ExternalInterruptIO
     val tlb = Output(new TlbCsrBundle)
@@ -51,6 +52,7 @@ class JumpExeUnit extends Exu(jumpExeUnitCfg)
   csr.csrio.isInterrupt <> csrio.isInterrupt
   csr.csrio.trapTarget <> csrio.trapTarget
   csr.csrio.interrupt <> csrio.interrupt
+  csr.csrio.wfiWakeup <> csrio.wfiWakeup
   csr.csrio.memExceptionVAddr <> csrio.memExceptionVAddr
   csr.csrio.externalInterrupt <> csrio.externalInterrupt
   csr.csrio.tlb <> csrio.tlb

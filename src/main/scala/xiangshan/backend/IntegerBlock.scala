@@ -79,6 +79,7 @@ class IntegerBlock
       val isInterrupt = Input(Bool()) // from roq
       val trapTarget = Output(UInt(VAddrBits.W)) // to roq
       val interrupt = Output(Bool()) // to roq
+      val wfiWakeup = Output(Bool()) // to roq
       val memExceptionVAddr = Input(UInt(VAddrBits.W)) // from lsq
       val externalInterrupt = new ExternalInterruptIO  // from outside
       val tlb = Output(new TlbCsrBundle) // from tlb

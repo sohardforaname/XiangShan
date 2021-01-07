@@ -36,6 +36,7 @@ object RoqPtr extends HasXSParameter {
 class RoqCSRIO extends XSBundle {
   val intrBitSet = Input(Bool())
   val trapTarget = Input(UInt(VAddrBits.W))
+  val wfiWakeup  = Input(Bool())
 
   val fflags = Output(new Fflags)
   val dirty_fs = Output(Bool())
@@ -326,7 +327,6 @@ class Roq(numWbPorts: Int) extends XSModule with HasCircularQueuePtrHelper {
       }
     }
   }
-  val isWFI = io.enq.req(0).bits.ctrl.roqOpType === RoqOpType.WFI
 
   // debug info for enqueue (dispatch)
   val dispatchNum = Mux(io.enq.canAccept, PopCount(Cat(io.enq.req.map(_.valid))), 0.U)
@@ -411,6 +411,17 @@ class Roq(numWbPorts: Int) extends XSModule with HasCircularQueuePtrHelper {
   val fflags = WireInit(0.U.asTypeOf(new Fflags))
   val dirty_fs = Mux(io.commits.isWalk, false.B, Cat(io.commits.valid.zip(io.commits.info.map(_.fpWen)).map{case (v, w) => v & w}).orR)
 
+  // wait for interrupt (WFI) support
+  val wfi = RegInit(false.B)
+  // wfi will come from CSRUnit (the same wb port as Jump: 0)
+  when(io.enq.req(0).bits.ctrl.roqOpType === RoqOpType.WFI && io.enq.req(0).fire()){
+    wfi := true.B
+  }
+
+  when(io.csr.wfiWakeup){
+    wfi := false.B
+  }
+
   io.commits.isWalk := state =/= s_idle
   val commit_v = Mux(state === s_idle, VecInit(deqPtrVec.map(ptr => valid(ptr.value))), VecInit(walkPtrVec.map(ptr => valid(ptr.value))))
   val commit_w = VecInit(deqPtrVec.map(ptr => writebacked(ptr.value)))
@@ -420,7 +431,7 @@ class Roq(numWbPorts: Int) extends XSModule with HasCircularQueuePtrHelper {
     // defaults: state === s_idle and instructions commit
     // when intrBitSetReg, allow only one instruction to commit at each clock cycle
     val isBlocked = if (i != 0) Cat(commit_block.take(i)).orR || intrBitSetReg else intrEnable
-    io.commits.valid(i) := commit_v(i) && commit_w(i) && !isBlocked && !commit_exception(i)
+    io.commits.valid(i) := commit_v(i) && commit_w(i) && !isBlocked && !commit_exception(i) && !wfi
     io.commits.info(i)  := dispatchDataRead(i)
 
     when (state === s_idle) {

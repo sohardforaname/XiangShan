@@ -158,7 +158,7 @@ object XDecode extends DecodeConstants {
     SRET    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.jmp, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
     MRET    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.jmp, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
 
-    WFI     -> List(SrcType.pc, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.sll, RoqOpType.WFI, Y, N, N, N, N, SelImm.IMM_X),
+    WFI     -> List(SrcType.pc, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.wfi, RoqOpType.WFI, Y, N, N, N, N, SelImm.IMM_X),
 
     FENCE_I -> List(SrcType.pc, SrcType.imm, SrcType.DC, FuType.fence, FenceOpType.fencei, RoqOpType.BLOCK, N, N, N, Y, N, SelImm.IMM_X),
     FENCE   -> List(SrcType.pc, SrcType.imm, SrcType.DC, FuType.fence, FenceOpType.fence, RoqOpType.BLOCK, N, N, N, Y, N, SelImm.IMM_X),
