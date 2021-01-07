@@ -47,8 +47,8 @@ class Dispatch1 extends XSModule {
   val isLs     = VecInit(io.fromRename.map(req => FuType.isMemExu(req.bits.ctrl.fuType)))
   val isStore  = VecInit(io.fromRename.map(req => FuType.isStoreExu(req.bits.ctrl.fuType)))
   val isAMO    = VecInit(io.fromRename.map(req => req.bits.ctrl.fuType === FuType.mou))
-  val isBlockBackward = VecInit(io.fromRename.map(_.bits.ctrl.blockBackward))
-  val isNoSpecExec    = VecInit(io.fromRename.map(_.bits.ctrl.noSpecExec))
+  val isBlockBackward = VecInit(io.fromRename.map(i => RoqOpType.blockBackward(i.bits.ctrl.roqOpType)))
+  val isNoSpecExec    = VecInit(io.fromRename.map(i => RoqOpType.noSpecExec(i.bits.ctrl.roqOpType)))
 
   /**
     * Part 2:

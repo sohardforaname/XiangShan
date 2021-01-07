@@ -301,7 +301,7 @@ class Roq(numWbPorts: Int) extends XSModule with HasCircularQueuePtrHelper {
   val hasBlockBackward = RegInit(false.B)
   val hasNoSpecExec = RegInit(false.B)
   // When blockBackward instruction leaves Roq (commit or walk), hasBlockBackward should be set to false.B
-  // val blockBackwardLeave = Cat((0 until CommitWidth).map(i => io.commits.valid(i) && io.commits.uop(i).ctrl.blockBackward)).orR
+  // val blockBackwardLeave = Cat((0 until CommitWidth).map(i => io.commits.valid(i) && RoqOpType.blockBackward(io.commits.uop(i).ctrl.roqOpType))).orR
   // To reduce registers usage, for hasBlockBackward cases, we allow enqueue after ROB is empty.
   when (isEmpty) { hasBlockBackward:= false.B }
   // When any instruction commits, hasNoSpecExec should be set to false.B
@@ -313,17 +313,21 @@ class Roq(numWbPorts: Int) extends XSModule with HasCircularQueuePtrHelper {
   val canEnqueue = VecInit(io.enq.req.map(_.valid && io.enq.canAccept))
   for (i <- 0 until RenameWidth) {
     // we don't check whether io.redirect is valid here since redirect has higher priority
+    val blockBackward = RoqOpType.blockBackward(io.enq.req(i).bits.ctrl.roqOpType)
+    val noSpecExec = RoqOpType.noSpecExec(io.enq.req(i).bits.ctrl.roqOpType)
     when (canEnqueue(i)) {
       // store uop in data module and debug_microOp Vec
       debug_microOp(enqPtrVec(i).value) := io.enq.req(i).bits
-      when (io.enq.req(i).bits.ctrl.blockBackward) {
+      when (blockBackward) {
         hasBlockBackward := true.B
       }
-      when (io.enq.req(i).bits.ctrl.noSpecExec) {
+      when (noSpecExec) {
         hasNoSpecExec := true.B
       }
     }
   }
+  val isWFI = io.enq.req(0).bits.ctrl.roqOpType === RoqOpType.WFI
+
   // debug info for enqueue (dispatch)
   val dispatchNum = Mux(io.enq.canAccept, PopCount(Cat(io.enq.req.map(_.valid))), 0.U)
   XSDebug(p"(ready, valid): ${io.enq.canAccept}, ${Binary(Cat(io.enq.req.map(_.valid)))}\n")

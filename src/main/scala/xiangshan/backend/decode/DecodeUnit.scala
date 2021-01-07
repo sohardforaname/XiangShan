@@ -29,15 +29,13 @@ abstract trait DecodeConstants {
   def Y = BitPat("b1")
 
   def decodeDefault: List[BitPat] = // illegal instruction
-    //   src1Type     src2Type     src3Type     fuType      fuOpType    rfWen
-    //   |            |            |            |           |           |  fpWen
-    //   |            |            |            |           |           |  |  isXSTrap
-    //   |            |            |            |           |           |  |  |  noSpecExec
-    //   |            |            |            |           |           |  |  |  |  blockBackward
-    //   |            |            |            |           |           |  |  |  |  |  flushPipe
-    //   |            |            |            |           |           |  |  |  |  |  |  isRVF
-    //   |            |            |            |           |           |  |  |  |  |  |  |  selImm
-    List(SrcType.DC, SrcType.DC, SrcType.DC, FuType.alu, ALUOpType.sll, N, N, N, N, N, N, N, SelImm.INVALID_INSTR) // Use SelImm to indicate invalid instr
+    //   src1Type     src2Type     src3Type     fuType      fuOpType    roqOpType         rfWen
+    //   |            |            |            |           |           |                 |  fpWen
+    //   |            |            |            |           |           |                 |  |  isXSTrap
+    //   |            |            |            |           |           |                 |  |  |  flushPipe
+    //   |            |            |            |           |           |                 |  |  |  |  isRVF
+    //   |            |            |            |           |           |                 |  |  |  |  |  selImm
+    List(SrcType.DC, SrcType.DC, SrcType.DC, FuType.alu, ALUOpType.sll, RoqOpType.NORMAL, N, N, N, N, N, SelImm.INVALID_INSTR) // Use SelImm to indicate invalid instr
   
     val table: Array[(BitPat, List[BitPat])]
 }
@@ -65,24 +63,24 @@ trait DecodeUnitConstants
  */
 object X64Decode extends DecodeConstants {
   val table: Array[(BitPat, List[BitPat])] = Array(
-    LD      -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.ld, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    LWU     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.lwu, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    SD      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.stu, LSUOpType.sd, N, N, N, N, N, N, N, SelImm.IMM_S),
+    LD      -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.ld, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    LWU     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.lwu, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    SD      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.stu, LSUOpType.sd, RoqOpType.NORMAL, N, N, N, N, N, SelImm.IMM_S),
 
-    SLLI    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.sll, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    SRLI    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.srl, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    SRAI    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.sra, Y, N, N, N, N, N, N, SelImm.IMM_I),
+    SLLI    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.sll, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    SRLI    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.srl, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    SRAI    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.sra, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
 
-    ADDIW   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.addw, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    SLLIW   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.sllw, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    SRAIW   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.sraw, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    SRLIW   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.srlw, Y, N, N, N, N, N, N, SelImm.IMM_I),
+    ADDIW   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.addw, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    SLLIW   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.sllw, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    SRAIW   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.sraw, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    SRLIW   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.srlw, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
 
-    ADDW    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.addw, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    SUBW    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.subw, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    SLLW    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sllw, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    SRAW    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sraw, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    SRLW    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.srlw, Y, N, N, N, N, N, N, SelImm.IMM_X)
+    ADDW    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.addw, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    SUBW    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.subw, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    SLLW    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sllw, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    SRAW    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sraw, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    SRLW    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.srlw, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X)
   )
 }
 
@@ -91,105 +89,105 @@ object X64Decode extends DecodeConstants {
  */
 object XDecode extends DecodeConstants {
   val table: Array[(BitPat, List[BitPat])] = Array(
-    LW      -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.lw, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    LH      -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.lh, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    LHU     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.lhu, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    LB      -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.lb, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    LBU     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.lbu, Y, N, N, N, N, N, N, SelImm.IMM_I),
+    LW      -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.lw, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    LH      -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.lh, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    LHU     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.lhu, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    LB      -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.lb, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    LBU     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.lbu, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
 
-    SW      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.stu, LSUOpType.sw, N, N, N, N, N, N, N, SelImm.IMM_S),
-    SH      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.stu, LSUOpType.sh, N, N, N, N, N, N, N, SelImm.IMM_S),
-    SB      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.stu, LSUOpType.sb, N, N, N, N, N, N, N, SelImm.IMM_S),
+    SW      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.stu, LSUOpType.sw, RoqOpType.NORMAL, N, N, N, N, N, SelImm.IMM_S),
+    SH      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.stu, LSUOpType.sh, RoqOpType.NORMAL, N, N, N, N, N, SelImm.IMM_S),
+    SB      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.stu, LSUOpType.sb, RoqOpType.NORMAL, N, N, N, N, N, SelImm.IMM_S),
 
-    LUI     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.add, Y, N, N, N, N, N, N, SelImm.IMM_U),
+    LUI     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.add, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_U),
 
-    ADDI    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.add, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    ANDI    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.and, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    ORI     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.or, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    XORI    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.xor, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    SLTI    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.slt, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    SLTIU   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.sltu, Y, N, N, N, N, N, N, SelImm.IMM_I),
+    ADDI    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.add, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    ANDI    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.and, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    ORI     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.or, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    XORI    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.xor, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    SLTI    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.slt, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    SLTIU   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.sltu, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
 
-    SLL     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sll, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    ADD     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.add, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    SUB     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sub, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    SLT     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.slt, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    SLTU    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sltu, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    AND     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.and, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    OR      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.or, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    XOR     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.xor, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    SRA     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sra, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    SRL     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.srl, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SLL     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sll, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    ADD     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.add, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    SUB     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sub, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    SLT     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.slt, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    SLTU    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sltu, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    AND     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.and, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    OR      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.or, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    XOR     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.xor, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    SRA     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sra, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    SRL     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.srl, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
 
-    MUL     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mul, MDUOpType.mul, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    MULH    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mul, MDUOpType.mulh, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    MULHU   -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mul, MDUOpType.mulhu, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    MULHSU  -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mul, MDUOpType.mulhsu, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    MULW    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mul, MDUOpType.mulw, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    MUL     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mul, MDUOpType.mul, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    MULH    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mul, MDUOpType.mulh, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    MULHU   -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mul, MDUOpType.mulhu, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    MULHSU  -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mul, MDUOpType.mulhsu, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    MULW    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mul, MDUOpType.mulw, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
 
-    DIV     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.div, MDUOpType.div, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    DIVU    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.div, MDUOpType.divu, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    REM     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.div, MDUOpType.rem, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    REMU    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.div, MDUOpType.remu, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    DIVW    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.div, MDUOpType.divw, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    DIVUW   -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.div, MDUOpType.divuw, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    REMW    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.div, MDUOpType.remw, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    REMUW   -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.div, MDUOpType.remuw, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    DIV     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.div, MDUOpType.div, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    DIVU    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.div, MDUOpType.divu, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    REM     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.div, MDUOpType.rem, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    REMU    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.div, MDUOpType.remu, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    DIVW    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.div, MDUOpType.divw, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    DIVUW   -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.div, MDUOpType.divuw, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    REMW    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.div, MDUOpType.remw, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+    REMUW   -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.div, MDUOpType.remuw, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
 
-    AUIPC   -> List(SrcType.pc, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.add, Y, N, N, N, N, N, N, SelImm.IMM_U),
-    JAL     -> List(SrcType.pc , SrcType.imm, SrcType.DC, FuType.jmp, JumpOpType.jal, Y, N, N, N, N, N, N, SelImm.IMM_UJ),
-    JALR    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.jmp, JumpOpType.jalr, Y, N, N, N, N, N, N, SelImm.IMM_I),
-    BEQ     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.beq, N, N, N, N, N, N, N, SelImm.IMM_SB),
-    BNE     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.bne, N, N, N, N, N, N, N, SelImm.IMM_SB),
-    BGE     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.bge, N, N, N, N, N, N, N, SelImm.IMM_SB),
-    BGEU    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.bgeu, N, N, N, N, N, N, N, SelImm.IMM_SB),
-    BLT     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.blt, N, N, N, N, N, N, N, SelImm.IMM_SB),
-    BLTU    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.bltu, N, N, N, N, N, N, N, SelImm.IMM_SB),
+    AUIPC   -> List(SrcType.pc, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.add, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_U),
+    JAL     -> List(SrcType.pc , SrcType.imm, SrcType.DC, FuType.jmp, JumpOpType.jal, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_UJ),
+    JALR    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.jmp, JumpOpType.jalr, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_I),
+    BEQ     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.beq, RoqOpType.NORMAL, N, N, N, N, N, SelImm.IMM_SB),
+    BNE     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.bne, RoqOpType.NORMAL, N, N, N, N, N, SelImm.IMM_SB),
+    BGE     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.bge, RoqOpType.NORMAL, N, N, N, N, N, SelImm.IMM_SB),
+    BGEU    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.bgeu, RoqOpType.NORMAL, N, N, N, N, N, SelImm.IMM_SB),
+    BLT     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.blt, RoqOpType.NORMAL, N, N, N, N, N, SelImm.IMM_SB),
+    BLTU    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.bltu, RoqOpType.NORMAL, N, N, N, N, N, SelImm.IMM_SB),
 
     // I-type, the immediate12 holds the CSR register.
-    CSRRW   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.wrt, Y, N, N, Y, Y, N, N, SelImm.IMM_I),
-    CSRRS   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.set, Y, N, N, Y, Y, N, N, SelImm.IMM_I),
-    CSRRC   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.clr, Y, N, N, Y, Y, N, N, SelImm.IMM_I),
+    CSRRW   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.wrt, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_I),
+    CSRRS   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.set, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_I),
+    CSRRC   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.clr, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_I),
 
-    CSRRWI  -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.wrti, Y, N, N, Y, Y, N, N, SelImm.IMM_I),
-    CSRRSI  -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.seti, Y, N, N, Y, Y, N, N, SelImm.IMM_I),
-    CSRRCI  -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.clri, Y, N, N, Y, Y, N, N, SelImm.IMM_I),
+    CSRRWI  -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.wrti, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_I),
+    CSRRSI  -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.seti, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_I),
+    CSRRCI  -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.clri, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_I),
 
-    SFENCE_VMA->List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.fence, FenceOpType.sfence, N, N, N, Y, Y, Y, N, SelImm.IMM_X),
-    ECALL   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.jmp, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    SRET    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.jmp, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    MRET    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.jmp, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
+    SFENCE_VMA->List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.fence, FenceOpType.sfence, RoqOpType.BLOCK, N, N, N, Y, N, SelImm.IMM_X),
+    ECALL   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.jmp, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    SRET    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.jmp, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    MRET    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.jmp, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
 
-    WFI     -> List(SrcType.pc, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.sll, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    WFI     -> List(SrcType.pc, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.sll, RoqOpType.WFI, Y, N, N, N, N, SelImm.IMM_X),
 
-    FENCE_I -> List(SrcType.pc, SrcType.imm, SrcType.DC, FuType.fence, FenceOpType.fencei, N, N, N, Y, Y, Y, N, SelImm.IMM_X),
-    FENCE   -> List(SrcType.pc, SrcType.imm, SrcType.DC, FuType.fence, FenceOpType.fence, N, N, N, Y, Y, Y, N, SelImm.IMM_X),
+    FENCE_I -> List(SrcType.pc, SrcType.imm, SrcType.DC, FuType.fence, FenceOpType.fencei, RoqOpType.BLOCK, N, N, N, Y, N, SelImm.IMM_X),
+    FENCE   -> List(SrcType.pc, SrcType.imm, SrcType.DC, FuType.fence, FenceOpType.fence, RoqOpType.BLOCK, N, N, N, Y, N, SelImm.IMM_X),
 
     // A-type
-    AMOADD_W-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoadd_w, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    AMOXOR_W-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoxor_w, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    AMOSWAP_W->List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoswap_w, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    AMOAND_W-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoand_w, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    AMOOR_W -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoor_w, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    AMOMIN_W-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amomin_w, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    AMOMINU_W->List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amominu_w, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    AMOMAX_W-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amomax_w, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    AMOMAXU_W->List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amomaxu_w, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
+    AMOADD_W-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoadd_w, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    AMOXOR_W-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoxor_w, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    AMOSWAP_W->List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoswap_w, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    AMOAND_W-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoand_w, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    AMOOR_W -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoor_w, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    AMOMIN_W-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amomin_w, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    AMOMINU_W->List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amominu_w, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    AMOMAX_W-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amomax_w, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    AMOMAXU_W->List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amomaxu_w, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
 
-    AMOADD_D-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoadd_d, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    AMOXOR_D-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoxor_d, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    AMOSWAP_D->List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoswap_d, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    AMOAND_D-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoand_d, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    AMOOR_D -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoor_d, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    AMOMIN_D-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amomin_d, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    AMOMINU_D->List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amominu_d, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    AMOMAX_D-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amomax_d, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    AMOMAXU_D->List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amomaxu_d, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
+    AMOADD_D-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoadd_d, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    AMOXOR_D-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoxor_d, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    AMOSWAP_D->List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoswap_d, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    AMOAND_D-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoand_d, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    AMOOR_D -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amoor_d, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    AMOMIN_D-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amomin_d, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    AMOMINU_D->List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amominu_d, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    AMOMAX_D-> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amomax_d, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    AMOMAXU_D->List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.amomaxu_d, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
 
-    LR_W    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.mou, LSUOpType.lr_w, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    LR_D    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.mou, LSUOpType.lr_d, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    SC_W    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.sc_w, Y, N, N, Y, Y, N, N, SelImm.IMM_X),
-    SC_D    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.sc_d, Y, N, N, Y, Y, N, N, SelImm.IMM_X)
+    LR_W    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.mou, LSUOpType.lr_w, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    LR_D    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.mou, LSUOpType.lr_d, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    SC_W    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.sc_w, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X),
+    SC_D    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.mou, LSUOpType.sc_d, RoqOpType.BLOCK, Y, N, N, N, N, SelImm.IMM_X)
   )
 }
 
@@ -199,81 +197,81 @@ object XDecode extends DecodeConstants {
 object FDecode extends DecodeConstants{
   val table: Array[(BitPat, List[BitPat])] = Array(
 
-  FLW     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.flw, N, Y, N, N, N, N, Y, SelImm.IMM_I),
-  FLD     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.ld, N, Y, N, N, N, N, N, SelImm.IMM_I),
-  FSW     -> List(SrcType.reg, SrcType.fp, SrcType.DC, FuType.stu, LSUOpType.sw, N, N, N, N, N, N, Y, SelImm.IMM_S),
-  FSD     -> List(SrcType.reg, SrcType.fp, SrcType.DC, FuType.stu, LSUOpType.sd, N, N, N, N, N, N, N, SelImm.IMM_S),
+  FLW     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.flw, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_I),
+  FLD     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.ld, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_I),
+  FSW     -> List(SrcType.reg, SrcType.fp, SrcType.DC, FuType.stu, LSUOpType.sw, RoqOpType.NORMAL, N, N, N, N, Y, SelImm.IMM_S),
+  FSD     -> List(SrcType.reg, SrcType.fp, SrcType.DC, FuType.stu, LSUOpType.sd, RoqOpType.NORMAL, N, N, N, N, N, SelImm.IMM_S),
 
-  FCLASS_S-> List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.fclass, Y, N, N, N, N, N, Y, SelImm.IMM_X),
-  FCLASS_D-> List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.fclass, Y, N, N, N, N, N, N, SelImm.IMM_X),
+  FCLASS_S-> List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.fclass, RoqOpType.NORMAL, Y, N, N, N, Y, SelImm.IMM_X),
+  FCLASS_D-> List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.fclass, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
 
-  FMV_D_X -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.fmv_i2f, N, Y, N, N, N, N, N, SelImm.IMM_X),
-  FMV_X_D -> List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.fmv_f2i, Y, N, N, N, N, N, N, SelImm.IMM_X),
-  FMV_X_W -> List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.fmv_f2i, Y, N, N, N, N, N, Y, SelImm.IMM_X),
-  FMV_W_X -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.fmv_i2f, N, Y, N, N, N, N, Y, SelImm.IMM_X),
+  FMV_D_X -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.fmv_i2f, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
+  FMV_X_D -> List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.fmv_f2i, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+  FMV_X_W -> List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.fmv_f2i, RoqOpType.NORMAL, Y, N, N, N, Y, SelImm.IMM_X),
+  FMV_W_X -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.fmv_i2f, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
 
-  FSGNJ_S -> List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fsgnj, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FSGNJ_D -> List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fsgnj, N, Y, N, N, N, N, N, SelImm.IMM_X),
-  FSGNJX_S-> List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fsgnjx, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FSGNJX_D-> List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fsgnjx, N, Y, N, N, N, N, N, SelImm.IMM_X),
-  FSGNJN_S-> List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fsgnjn, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FSGNJN_D-> List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fsgnjn, N, Y, N, N, N, N, N, SelImm.IMM_X),
+  FSGNJ_S -> List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fsgnj, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FSGNJ_D -> List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fsgnj, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
+  FSGNJX_S-> List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fsgnjx, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FSGNJX_D-> List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fsgnjx, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
+  FSGNJN_S-> List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fsgnjn, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FSGNJN_D-> List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fsgnjn, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
 
   // FP to FP
-  FCVT_S_D-> List(SrcType.fp, SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.d2s, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FCVT_D_S-> List(SrcType.fp, SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.s2d, N, Y, N, N, N, N, N, SelImm.IMM_X),
+  FCVT_S_D-> List(SrcType.fp, SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.d2s, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FCVT_D_S-> List(SrcType.fp, SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.s2d, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
 
   // Int to FP
-  FCVT_S_W-> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.w2f, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FCVT_S_WU->List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.wu2f, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FCVT_S_L-> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.l2f, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FCVT_S_LU->List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.lu2f, N, Y, N, N, N, N, Y, SelImm.IMM_X),
+  FCVT_S_W-> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.w2f, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FCVT_S_WU->List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.wu2f, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FCVT_S_L-> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.l2f, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FCVT_S_LU->List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.lu2f, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
 
-  FCVT_D_W-> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.w2f, N, Y, N, N, N, N, N, SelImm.IMM_X),
-  FCVT_D_WU->List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.wu2f, N, Y, N, N, N, N, N, SelImm.IMM_X),
-  FCVT_D_L-> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.l2f, N, Y, N, N, N, N, N, SelImm.IMM_X),
-  FCVT_D_LU->List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.lu2f, N, Y, N, N, N, N, N, SelImm.IMM_X),
+  FCVT_D_W-> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.w2f, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
+  FCVT_D_WU->List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.wu2f, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
+  FCVT_D_L-> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.l2f, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
+  FCVT_D_LU->List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.i2f, FPUOpType.lu2f, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
 
   // FP to Int
-  FCVT_W_S-> List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.f2w, Y, N, N, N, N, N, Y, SelImm.IMM_X),
-  FCVT_WU_S->List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.f2wu, Y, N, N, N, N, N, Y, SelImm.IMM_X),
-  FCVT_L_S-> List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.f2l, Y, N, N, N, N, N, Y, SelImm.IMM_X),
-  FCVT_LU_S->List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.f2lu, Y, N, N, N, N, N, Y, SelImm.IMM_X),
+  FCVT_W_S-> List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.f2w, RoqOpType.NORMAL, Y, N, N, N, Y, SelImm.IMM_X),
+  FCVT_WU_S->List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.f2wu, RoqOpType.NORMAL, Y, N, N, N, Y, SelImm.IMM_X),
+  FCVT_L_S-> List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.f2l, RoqOpType.NORMAL, Y, N, N, N, Y, SelImm.IMM_X),
+  FCVT_LU_S->List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.f2lu, RoqOpType.NORMAL, Y, N, N, N, Y, SelImm.IMM_X),
 
-  FCVT_W_D-> List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.f2w, Y, N, N, N, N, N, N, SelImm.IMM_X),
-  FCVT_WU_D->List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.f2wu, Y, N, N, N, N, N, N, SelImm.IMM_X),
-  FCVT_L_D-> List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.f2l, Y, N, N, N, N, N, N, SelImm.IMM_X),
-  FCVT_LU_D->List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.f2lu, Y, N, N, N, N, N, N, SelImm.IMM_X),
+  FCVT_W_D-> List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.f2w, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+  FCVT_WU_D->List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.f2wu, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+  FCVT_L_D-> List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.f2l, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+  FCVT_LU_D->List(SrcType.fp , SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.f2lu, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
 
   // "fp_single" is used for wb_data formatting (and debugging)
-  FEQ_S    ->List(SrcType.fp , SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.feq, Y, N, N, N, N, N, Y, SelImm.IMM_X),
-  FLT_S    ->List(SrcType.fp , SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.flt, Y, N, N, N, N, N, Y, SelImm.IMM_X),
-  FLE_S    ->List(SrcType.fp , SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fle, Y, N, N, N, N, N, Y, SelImm.IMM_X),
+  FEQ_S    ->List(SrcType.fp , SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.feq, RoqOpType.NORMAL, Y, N, N, N, Y, SelImm.IMM_X),
+  FLT_S    ->List(SrcType.fp , SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.flt, RoqOpType.NORMAL, Y, N, N, N, Y, SelImm.IMM_X),
+  FLE_S    ->List(SrcType.fp , SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fle, RoqOpType.NORMAL, Y, N, N, N, Y, SelImm.IMM_X),
 
-  FEQ_D    ->List(SrcType.fp , SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.feq, Y, N, N, N, N, N, N, SelImm.IMM_X),
-  FLT_D    ->List(SrcType.fp , SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.flt, Y, N, N, N, N, N, N, SelImm.IMM_X),
-  FLE_D    ->List(SrcType.fp , SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fle, Y, N, N, N, N, N, N, SelImm.IMM_X),
+  FEQ_D    ->List(SrcType.fp , SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.feq, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+  FLT_D    ->List(SrcType.fp , SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.flt, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
+  FLE_D    ->List(SrcType.fp , SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fle, RoqOpType.NORMAL, Y, N, N, N, N, SelImm.IMM_X),
 
-  FMIN_S   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fmin, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FMAX_S   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fmax, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FMIN_D   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fmin, N, Y, N, N, N, N, N, SelImm.IMM_X),
-  FMAX_D   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fmax, N, Y, N, N, N, N, N, SelImm.IMM_X),
+  FMIN_S   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fmin, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FMAX_S   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fmax, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FMIN_D   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fmin, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
+  FMAX_D   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fmax, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
 
-  FADD_S   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmac, FPUOpType.fadd, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FSUB_S   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmac, FPUOpType.fsub, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FMUL_S   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmac, FPUOpType.fmul, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FADD_D   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmac, FPUOpType.fadd, N, Y, N, N, N, N, N, SelImm.IMM_X),
-  FSUB_D   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmac, FPUOpType.fsub, N, Y, N, N, N, N, N, SelImm.IMM_X),
-  FMUL_D   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmac, FPUOpType.fmul, N, Y, N, N, N, N, N, SelImm.IMM_X),
+  FADD_S   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmac, FPUOpType.fadd, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FSUB_S   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmac, FPUOpType.fsub, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FMUL_S   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmac, FPUOpType.fmul, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FADD_D   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmac, FPUOpType.fadd, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
+  FSUB_D   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmac, FPUOpType.fsub, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
+  FMUL_D   ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmac, FPUOpType.fmul, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
 
-  FMADD_S  ->List(SrcType.fp,  SrcType.fp, SrcType.fp, FuType.fmac, FPUOpType.fmadd, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FMSUB_S  ->List(SrcType.fp,  SrcType.fp, SrcType.fp, FuType.fmac, FPUOpType.fmsub, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FNMADD_S ->List(SrcType.fp,  SrcType.fp, SrcType.fp, FuType.fmac, FPUOpType.fnmadd, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FNMSUB_S ->List(SrcType.fp,  SrcType.fp, SrcType.fp, FuType.fmac, FPUOpType.fnmsub, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FMADD_D  ->List(SrcType.fp,  SrcType.fp, SrcType.fp, FuType.fmac, FPUOpType.fmadd, N, Y, N, N, N, N, N, SelImm.IMM_X),
-  FMSUB_D  ->List(SrcType.fp,  SrcType.fp, SrcType.fp, FuType.fmac, FPUOpType.fmsub, N, Y, N, N, N, N, N, SelImm.IMM_X),
-  FNMADD_D ->List(SrcType.fp,  SrcType.fp, SrcType.fp, FuType.fmac, FPUOpType.fnmadd, N, Y, N, N, N, N, N, SelImm.IMM_X),
-  FNMSUB_D ->List(SrcType.fp,  SrcType.fp, SrcType.fp, FuType.fmac, FPUOpType.fnmsub, N, Y, N, N, N, N, N, SelImm.IMM_X)
+  FMADD_S  ->List(SrcType.fp,  SrcType.fp, SrcType.fp, FuType.fmac, FPUOpType.fmadd, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FMSUB_S  ->List(SrcType.fp,  SrcType.fp, SrcType.fp, FuType.fmac, FPUOpType.fmsub, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FNMADD_S ->List(SrcType.fp,  SrcType.fp, SrcType.fp, FuType.fmac, FPUOpType.fnmadd, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FNMSUB_S ->List(SrcType.fp,  SrcType.fp, SrcType.fp, FuType.fmac, FPUOpType.fnmsub, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FMADD_D  ->List(SrcType.fp,  SrcType.fp, SrcType.fp, FuType.fmac, FPUOpType.fmadd, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
+  FMSUB_D  ->List(SrcType.fp,  SrcType.fp, SrcType.fp, FuType.fmac, FPUOpType.fmsub, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
+  FNMADD_D ->List(SrcType.fp,  SrcType.fp, SrcType.fp, FuType.fmac, FPUOpType.fnmadd, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
+  FNMSUB_D ->List(SrcType.fp,  SrcType.fp, SrcType.fp, FuType.fmac, FPUOpType.fnmsub, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X)
   )
 }
 
@@ -282,10 +280,10 @@ object FDecode extends DecodeConstants{
  */
 object FDivSqrtDecode extends DecodeConstants {
   val table: Array[(BitPat, List[BitPat])] = Array(
-  FDIV_S    ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fdiv, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FDIV_D    ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fdiv, N, Y, N, N, N, N, N, SelImm.IMM_X),
-  FSQRT_S   ->List(SrcType.fp,  SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.fsqrt, N, Y, N, N, N, N, Y, SelImm.IMM_X),
-  FSQRT_D   ->List(SrcType.fp,  SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.fsqrt, N, Y, N, N, N, N, N, SelImm.IMM_X)
+  FDIV_S    ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fdiv, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FDIV_D    ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, FPUOpType.fdiv, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X),
+  FSQRT_S   ->List(SrcType.fp,  SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.fsqrt, RoqOpType.NORMAL, N, Y, N, N, Y, SelImm.IMM_X),
+  FSQRT_D   ->List(SrcType.fp,  SrcType.imm, SrcType.DC, FuType.fmisc, FPUOpType.fsqrt, RoqOpType.NORMAL, N, Y, N, N, N, SelImm.IMM_X)
   )
 }
 
@@ -297,7 +295,7 @@ object XSTrapDecode extends DecodeConstants {
   // replace rs '?????' with '01010'(a0) in decode stage
   def lsrc1 = "b01010".U // $a0
   val table: Array[(BitPat, List[BitPat])] = Array(
-    TRAP    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.add, Y, N, Y, Y, Y, N, N, SelImm.IMM_I)
+    TRAP    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.add, RoqOpType.BLOCK, Y, N, Y, N, N, SelImm.IMM_I)
   )
 }
 
@@ -392,7 +390,7 @@ class DecodeUnit extends XSModule with DecodeUnitConstants {
   //                           fflags    zero csrrs rd    csr
   val isFrflags = BitPat("b000000000001_00000_010_?????_1110011") === ctrl_flow.instr
   when (cs.fuType === FuType.csr && isFrflags) {
-    cs.blockBackward := false.B
+    cs.roqOpType := RoqOpType.NOSPEC
   }
 
   // fix isXSTrap
@@ -425,9 +423,9 @@ class DecodeUnit extends XSModule with DecodeUnitConstants {
     io.deq.cf_ctrl.ctrl.src1Type, io.deq.cf_ctrl.ctrl.src2Type, io.deq.cf_ctrl.ctrl.src3Type,
     io.deq.cf_ctrl.ctrl.lsrc1, io.deq.cf_ctrl.ctrl.lsrc2, io.deq.cf_ctrl.ctrl.lsrc3,
     io.deq.cf_ctrl.ctrl.ldest, io.deq.cf_ctrl.ctrl.fuType, io.deq.cf_ctrl.ctrl.fuOpType)
-  XSDebug("out: rfWen=%d fpWen=%d isXSTrap=%d noSpecExec=%d isBlocked=%d flushPipe=%d isRVF=%d imm=%x\n",
+  XSDebug("out: rfWen=%d fpWen=%d isXSTrap=%d roqOpType=%d flushPipe=%d isRVF=%d imm=%x\n",
     io.deq.cf_ctrl.ctrl.rfWen, io.deq.cf_ctrl.ctrl.fpWen, io.deq.cf_ctrl.ctrl.isXSTrap,
-    io.deq.cf_ctrl.ctrl.noSpecExec, io.deq.cf_ctrl.ctrl.blockBackward, io.deq.cf_ctrl.ctrl.flushPipe,
+    io.deq.cf_ctrl.ctrl.roqOpType, io.deq.cf_ctrl.ctrl.flushPipe,
     io.deq.cf_ctrl.ctrl.isRVF, io.deq.cf_ctrl.ctrl.imm)
   XSDebug("out: excepVec=%b intrVec=%b\n",
     io.deq.cf_ctrl.cf.exceptionVec.asUInt, io.deq.cf_ctrl.cf.intrVec.asUInt)

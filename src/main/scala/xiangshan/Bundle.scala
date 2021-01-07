@@ -193,8 +193,7 @@ class CtrlSignals extends XSBundle {
   val rfWen = Bool()
   val fpWen = Bool()
   val isXSTrap = Bool()
-  val noSpecExec = Bool()  // wait forward
-  val blockBackward  = Bool()  // block backward
+  val roqOpType = RoqOpType()
   val flushPipe  = Bool()  // This inst will flush all the pipe when commit, like exception but can commit
   val isRVF = Bool()
   val selImm = SelImm()
@@ -204,8 +203,8 @@ class CtrlSignals extends XSBundle {
   def decode(inst: UInt, table: Iterable[(BitPat, List[BitPat])]) = {
     val decoder = freechips.rocketchip.rocket.DecodeLogic(inst, XDecode.decodeDefault, table)
     val signals =
-      Seq(src1Type, src2Type, src3Type, fuType, fuOpType, rfWen, fpWen, 
-          isXSTrap, noSpecExec, blockBackward, flushPipe, isRVF, selImm)
+      Seq(src1Type, src2Type, src3Type, fuType, fuOpType, roqOpType, rfWen, fpWen, 
+          isXSTrap, flushPipe, isRVF, selImm)
     signals zip decoder map { case(s, d) => s := d }
     commitType := DontCare
     this

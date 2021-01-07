@@ -75,6 +75,17 @@ package object xiangshan {
     def apply() = UInt(exuParameters.FuOpWidth.W)
   }
 
+  object RoqOpType extends HasXSParameter {
+    def NORMAL = "b00".U  // int/fp, do nothing special
+    def NOSPEC = "b01".U  // that inst can not spec exec
+    def BLOCK = "b11".U  // no spec & block all following insts
+    def WFI = "b10".U  // this inst is WFI
+    def apply() = UInt(2.W)
+
+    def blockBackward(roqOpType: UInt) = roqOpType(1)
+    def noSpecExec(roqOpType: UInt) = roqOpType =/= 0.U
+  }
+
   object BTBtype {
     def B = "b00".U  // branch
     def J = "b01".U  // jump
