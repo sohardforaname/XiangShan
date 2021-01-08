@@ -44,7 +44,7 @@ class IcacheMissReq extends ICacheBundle
 {
     val addr  = UInt(PAddrBits.W)
     val setIdx   = UInt(idxBits.W)
-    val waymask = UInt(PredictWidth.W)
+    val waymask = UInt(nWays.W)
     val clientID = UInt(2.W)
     def apply(missAddr:UInt, missIdx:UInt, missWaymask:UInt, source:UInt) = {
       this.addr := missAddr
