@@ -35,7 +35,6 @@ trait HasICacheParameters extends HasL1CacheParameters with HasIFUConst {
   val ptrHighBit = log2Up(groupBytes) - 1 
   val ptrLowBit = log2Up(packetBytes)
 
-
   def accessBorder =  0x80000000L
   def cacheID = 0
   def insLen = if (HasCExtension) 16 else 32
@@ -173,25 +172,26 @@ class ICacheMetaArray extends ICachArray
   val io=IO{new Bundle{
     val write = Flipped(DecoupledIO(new ICacheMetaWriteBundle))
     val read  = Flipped(DecoupledIO(UInt(idxBits.W)))
-    val readResp = Output(Vec(nWays,UInt(tagBits.W)))
+    val readResp = Output(Vec(nWays,UInt(encTagBits.W)))
   }}
 
   val metaArray = Module(new SRAMTemplate(UInt(encTagBits.W), set=nSets, way=nWays, shouldReset = true))
 
-  //read
-  metaArray.io.r.req.valid := io.read.valid
-  io.read.ready := metaArray.io.r.req.ready
-  io.write.ready := DontCare
-  metaArray.io.r.req.bits.apply(setIdx=io.read.bits)
-
+  // read
+  //do ECC decoding after way choose
+  // do not read and write in the same cycle: when write SRAM disable read
   val rtag = metaArray.io.r.resp.asTypeOf(Vec(nWays,UInt(encTagBits.W)))
-  val tag_encoded = VecInit(rtag.map(wtag => cacheParams.tagCode.decode(wtag).corrected))
-  io.readResp :=tag_encoded.asTypeOf(Vec(nWays,UInt(tagBits.W)))
+  metaArray.io.r.req.valid := io.read.valid
+  metaArray.io.r.req.bits.apply(setIdx=io.read.bits)
+  io.write.ready := DontCare
+  io.read.ready := !io.write.valid && metaArray.io.r.req.ready
+  io.readResp := rtag.asTypeOf(Vec(nWays,UInt(encTagBits.W)))
+
   //write
   val write = io.write.bits
-  val wdata_encoded = cacheParams.tagCode.encode(write.phyTag.asUInt)
+  val wtag_encoded = cacheParams.tagCode.encode(write.phyTag.asUInt)
   metaArray.io.w.req.valid := io.write.valid
-  metaArray.io.w.req.bits.apply(data=wdata_encoded, setIdx=write.virIdx, waymask=write.waymask)
+  metaArray.io.w.req.bits.apply(data=wtag_encoded, setIdx=write.virIdx, waymask=write.waymask)
 
 
 }
@@ -208,14 +208,15 @@ class ICacheDataArray extends ICachArray
 
   //read
   //do ECC decoding after way choose
+  // do not read and write in the same cycle: when write SRAM disable read
   for(b <- 0 until blockWords){
     dataArray(b).io.r.req.valid := io.read.valid
     dataArray(b).io.r.req.bits.apply(setIdx=io.read.bits)
   }
   val dataArrayReadyVec = dataArray.map(b => b.io.r.req.ready)
-
-  io.read.ready := ParallelOR(dataArrayReadyVec)
+  
   io.write.ready := DontCare
+  io.read.ready := ParallelOR(dataArrayReadyVec) && !io.write.valid
   io.readResp := VecInit(dataArray.map(b => b.io.r.resp.asTypeOf(Vec(nWays,UInt(encRowBits.W)))))
 
   //write
