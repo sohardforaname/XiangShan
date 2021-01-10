@@ -282,7 +282,7 @@ class LoadUnit extends XSModule with HasLoadHelper {
 
   val intLoadOutReg = RegNext(intLoadOut)
   io.ldout.bits := intLoadOutReg.bits
-  io.ldout.valid := RegNext(intLoadOut.valid && !load_s2.io.out.bits.uop.roqIdx.needFlush(io.redirect))
+  io.ldout.valid := RegNext(intLoadOut.valid)
   
   // Fp load, if hit, will be send to recoder at s2, then it will be recoded & writebacked at s3
   val fpHitLoadOut = Wire(Valid(new ExuOutput))
@@ -296,7 +296,7 @@ class LoadUnit extends XSModule with HasLoadHelper {
   val fpLoadOutReg = RegNext(fpLoadOut)
   io.fpout.bits := fpLoadOutReg.bits
   io.fpout.bits.data := fpRdataHelper(fpLoadOutReg.bits.uop, fpLoadOutReg.bits.data) // recode
-  io.fpout.valid := RegNext(fpLoadOut.valid && !load_s2.io.out.bits.uop.roqIdx.needFlush(io.redirect))
+  io.fpout.valid := RegNext(fpLoadOut.valid)
 
   io.lsq.ldout.ready := Mux(refillFpLoad, !fpLoadOut.valid, !intHitLoadOut.valid)
 
