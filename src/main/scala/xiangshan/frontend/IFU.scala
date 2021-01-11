@@ -276,20 +276,24 @@ class IFU extends XSModule with HasIFUConst
 
   if4_predicted_gh := if4_gh.update(if4_bp.hasNotTakenBrs, if4_bp.takenOnBr)
 
-  def jal_offset(inst: UInt, rvc: Bool): SInt = {
-    Mux(rvc,
-      Cat(inst(12), inst(8), inst(10, 9), inst(6), inst(7), inst(2), inst(11), inst(5, 3), 0.U(1.W)).asSInt(),
-      Cat(inst(31), inst(19, 12), inst(20), inst(30, 21), 0.U(1.W)).asSInt()
-    )
-  }
-  val if4_instrs = if4_pd.instrs
-  val if4_jals = if4_bp.jalMask
-  val if4_jal_tgts = VecInit((0 until PredictWidth).map(i => (if4_pd.pc(i).asSInt + jal_offset(if4_instrs(i), if4_pd.pd(i).isRVC)).asUInt))
+  if(EnableJal){
+      def jal_offset(inst: UInt, rvc: Bool): SInt = {
+        Mux(rvc,
+          Cat(inst(12), inst(8), inst(10, 9), inst(6), inst(7), inst(2), inst(11), inst(5, 3), 0.U(1.W)).asSInt(),
+          Cat(inst(31), inst(19, 12), inst(20), inst(30, 21), 0.U(1.W)).asSInt()
+        )
+      }
+      val if4_instrs = if4_pd.instrs
+      val if4_jals = if4_bp.jalMask
+      val if4_jal_tgts = VecInit((0 until PredictWidth).map(i => (if4_pd.pc(i).asSInt + jal_offset(if4_instrs(i), if4_pd.pd(i).isRVC)).asUInt))
 
-  (0 until PredictWidth).foreach {i =>
-    when (if4_jals(i)) {
-      if4_bp.targets(i) := if4_jal_tgts(i)
-    }
+      (0 until PredictWidth).foreach {i =>
+        when (if4_jals(i)) {
+          if4_bp.targets(i) := if4_jal_tgts(i)
+        }
+      }
+      XSDebug(if4_pd.pd(if4_bp.jmpIdx).isJal && if4_bp.taken, "[IF4] cfi is jal!  instr=%x target=%x\n", if4_instrs(if4_bp.jmpIdx), if4_jal_tgts(if4_bp.jmpIdx))
+
   }
 
   // we need this to tell BPU the prediction of prev half
@@ -505,7 +509,6 @@ class IFU extends XSModule with HasIFUConst
     XSDebug("[IF4][snpc]: %x, realMask=%b\n", if4_snpc, if4_mask)
     XSDebug("[IF4][bp] taken=%d jmpIdx=%d hasNTBrs=%d target=%x saveHalfRVI=%d\n", if4_bp.taken, if4_bp.jmpIdx, if4_bp.hasNotTakenBrs, if4_bp.target, if4_bp.saveHalfRVI)
     XSDebug("[IF4][redirect]: v=%d, prevNotMet=%d, predT=%d, predNT=%d\n", if4_redirect, if4_prevHalfNextNotMet, if4_predTakenRedirect, if4_predNotTakenRedirect)
-    XSDebug(if4_pd.pd(if4_bp.jmpIdx).isJal && if4_bp.taken, "[IF4] cfi is jal!  instr=%x target=%x\n", if4_instrs(if4_bp.jmpIdx), if4_jal_tgts(if4_bp.jmpIdx))
     XSDebug("[IF4][ prevHalfInstrReq] v=%d taken=%d fetchpc=%x idx=%d pc=%x npc=%x tgt=%x instr=%x ipf=%d\n",
       prevHalfInstrReq.valid, prevHalfInstrReq.bits.taken, prevHalfInstrReq.bits.fetchpc, prevHalfInstrReq.bits.idx, prevHalfInstrReq.bits.pc, prevHalfInstrReq.bits.npc, prevHalfInstrReq.bits.target, prevHalfInstrReq.bits.instr, prevHalfInstrReq.bits.ipf)
     XSDebug("[IF4][if4_prevHalfInstr] v=%d taken=%d fetchpc=%x idx=%d pc=%x npc=%x tgt=%x instr=%x ipf=%d\n",

@@ -160,7 +160,8 @@ class BTB extends BasePredictor with BTBParams{
     io.resp.types(b) := meta_entry.btbType
     io.resp.isRVC(b) := meta_entry.isRVC
     io.meta.writeWay(b) := writeWay(b)
-    io.meta.hitJal(b)   := if2_bankHits(b) && meta_entry.btbType === BTBtype.J
+    if(EnableJal) io.meta.hitJal(b)   := if2_bankHits(b) && meta_entry.btbType === BTBtype.J
+    else io.meta.hitJal(b)   :=DontCare
   }
 
   def pdInfoToBTBtype(pd: PreDecodeInfo) = {
@@ -188,8 +189,13 @@ class BTB extends BasePredictor with BTBParams{
   val metaWrite = BtbMetaEntry(btbAddr.getTag(u.pc), updateType, u.pd.isRVC)
   val dataWrite = BtbDataEntry(new_lower, new_extended)
 
-  val jalFirstEncountered = !u.isMisPred && !u.bpuMeta.btbHitJal && updateType === BTBtype.J
-  val updateValid = io.update.valid && (u.isMisPred || jalFirstEncountered) && !u.isReplay
+  val updateValid = WireInit(false.B)
+  if(EnableJal) {
+    val jalFirstEncountered = !u.isMisPred && !u.bpuMeta.btbHitJal && updateType === BTBtype.J 
+    updateValid := io.update.valid && (u.isMisPred || jalFirstEncountered) && !u.isReplay
+  } else {
+    updateValid := io.update.valid && u.isMisPred && !u.isReplay
+  }
   // Update btb
   for (w <- 0 until BtbWays) {
     for (b <- 0 until BtbBanks) {
