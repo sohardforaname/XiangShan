@@ -403,7 +403,9 @@ class DecodeUnit extends XSModule with DecodeUnitConstants {
     cs.lsrc1 := XSTrapDecode.lsrc1
   }
 
-  cs.imm := SignExt(Imm32Gen(cs.selImm, ctrl_flow.instr), XLEN)
+  // this was moved to ReservationStation
+  // cs.imm := SignExt(Imm32Gen(cs.selImm, ctrl_flow.instr), XLEN)
+  cs.imm := DontCare
 
   cf_ctrl.ctrl := cs
 

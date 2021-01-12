@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.util._
 import xiangshan._
 import utils._
+import xiangshan.backend.decode.Imm32Gen
 import xiangshan.backend.exu.{Exu, ExuConfig}
 import xiangshan.backend.regfile.RfReadPort
 
@@ -377,7 +378,9 @@ class ReservationStationData
   val sel   = io.ctrl.deqPtr
   val deq   = RegEnable(sel.bits, sel.valid)
   val enqCtrl = io.ctrl.enqCtrl
-  val enqUop = enqCtrl.bits
+  val enqUop = WireInit(enqCtrl.bits)
+  // TODO: move this to next cycle
+  enqUop.ctrl.imm := SignExt(Imm32Gen(enqCtrl.bits.ctrl.selImm, enqCtrl.bits.cf.instr), XLEN)
 
   // enq
   val enqPtr = enq(log2Up(IssQueSize)-1,0)
