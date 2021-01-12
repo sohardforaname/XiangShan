@@ -159,7 +159,7 @@ class ReservationStationCtrl
   val haveBubble = findBubble && (bubPtr < tailPtr.asUInt)
   val bubIdx = idxQueue(bubPtr)
   val bubIdxReg = RegNext(bubIdx) // NOTE: may dup with other signal, fix it later
-  val bubValid = haveBubble && (if (feedback) true.B else !selValid)
+  val bubValid = haveBubble
   val bubReg = RegNext(bubValid)
   val bubPtrReg = RegNext(Mux(moveMask(bubPtr), bubPtr-1.U, bubPtr))
 
@@ -167,7 +167,7 @@ class ReservationStationCtrl
   val dequeue = if (feedback) bubReg
                 else          bubReg || issFire
   val deqPtr =  if (feedback) bubPtrReg
-                else Mux(selReg, selPtrReg, bubPtrReg)
+                else Mux(bubReg , bubPtrReg, selPtrReg)
   moveMask := {
     (Fill(iqSize, 1.U(1.W)) << deqPtr)(iqSize-1, 0)
   } & Fill(iqSize, dequeue)
