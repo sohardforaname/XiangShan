@@ -40,7 +40,8 @@ case class XSCoreParameters
   EnableLB: Boolean = false,
   EnableLoop: Boolean = true,
   EnableSC: Boolean = false,
-  EnableJal: Boolean = false,
+  EnableJal: Boolean = true,
+  EnableUBTB: Boolean = false,
   HistoryLength: Int = 64,
   BtbSize: Int = 2048,
   JbtacSize: Int = 1024,
@@ -124,6 +125,7 @@ trait HasXSParameter {
   val EnableLoop = core.EnableLoop
   val EnableSC = core.EnableSC
   val EnableJal = core.EnableJal
+  val EnableUBTB = core.EnableUBTB
   val HistoryLength = core.HistoryLength
   val BtbSize = core.BtbSize
   // val BtbWays = 4

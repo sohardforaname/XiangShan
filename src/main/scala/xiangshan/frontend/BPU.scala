@@ -378,7 +378,7 @@ trait BranchPredictorComponents extends HasXSParameter {
   val tage = (if(EnableBPD) { Module(new Tage) } 
               else          { Module(new FakeTage) })
   val loop = Module(new LoopPredictor)
-  val preds = Seq(ubtb, btb, bim, tage, loop)
+  val preds = if(EnableUBTB) Seq(ubtb, btb, bim, tage, loop) else Seq(btb, bim, tage, loop)
   preds.map(_.io := DontCare)
 }
 
@@ -476,17 +476,21 @@ class BPU extends BaseBPU {
   (0 until PredictWidth).foreach(i => s1_brInfo_in(i).fetchIdx := i.U)
 
   val s1_inLatch = RegEnable(io.in, s1_fire)
-  ubtb.io.pc.valid := s2_fire
-  ubtb.io.pc.bits := s1_inLatch.pc
-  ubtb.io.inMask := s1_inLatch.inMask
+  if(EnableUBTB){
+    ubtb.io.pc.valid := s2_fire
+    ubtb.io.pc.bits := s1_inLatch.pc
+    ubtb.io.inMask := s1_inLatch.inMask
 
-
-
-  // Wrap ubtb response into resp_in and brInfo_in
-  s1_resp_in.ubtb <> ubtb.io.out
-  for (i <- 0 until PredictWidth) {
-    s1_brInfo_in(i).ubtbWriteWay := ubtb.io.uBTBMeta.writeWay(i)
-    s1_brInfo_in(i).ubtbHits := ubtb.io.uBTBMeta.hits(i)
+    // Wrap ubtb response into resp_in and brInfo_in
+    s1_resp_in.ubtb <> ubtb.io.out
+    for (i <- 0 until PredictWidth) {
+      s1_brInfo_in(i).ubtbWriteWay := ubtb.io.uBTBMeta.writeWay(i)
+      s1_brInfo_in(i).ubtbHits := ubtb.io.uBTBMeta.hits(i)
+    }
+  } else {
+    s1_resp_in.ubtb := DontCare
+    ubtb.io <> DontCare
+    ubtb.fires <> DontCare
   }
 
   btb.io.pc.valid := s1_fire
